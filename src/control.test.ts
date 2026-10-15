@@ -73,3 +73,12 @@ describe("a run cut short by a reboot", () => {
     expect(readFileSync(join(dir, "inbox", "request"), "utf8").trim()).toBe("update");
   });
 });
+
+describe("the log shown in the cabinet", () => {
+  test("terminal colour codes of the installer output are dropped", () => {
+    const dir = controlDir();
+    writeFileSync(join(dir, "status.json"), JSON.stringify({ action: "update", state: "ok", startedAt: "2026-10-15T15:00:00Z", finishedAt: "2026-10-15T15:01:00Z" }));
+    writeFileSync(join(dir, "update.log"), "\u001b[1m==> Done\u001b[0m\n  \u001b[32mok\u001b[0m    cabinet is healthy\n");
+    expect((controlStatus(dir) as { log: string[] }).log).toEqual(["==> Done", "  ok    cabinet is healthy"]);
+  });
+});

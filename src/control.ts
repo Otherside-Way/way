@@ -12,6 +12,8 @@ export type ControlStatus = { available: false } | { available: true; requested:
 
 const LOG_LINES = 40;
 
+const TERMINAL_CODES = /\x1b\[[0-9;]*[A-Za-z]/g;
+
 const STALE_RUN_MS = 30 * 60_000;
 
 function isAction(value: unknown): value is ServerAction {
@@ -42,7 +44,7 @@ export function controlStatus(dir: string | null = config.controlDir): ControlSt
   if (!dir || !existsSync(join(dir, "enabled"))) return { available: false };
   const requested = readText(join(dir, "inbox", "request"))?.trim();
   const last = readLast(dir);
-  const log = last ? (readText(join(dir, `${last.action}.log`)) ?? "").split("\n").filter(Boolean).slice(-LOG_LINES) : [];
+  const log = last ? (readText(join(dir, `${last.action}.log`)) ?? "").replace(TERMINAL_CODES, "").split("\n").filter(Boolean).slice(-LOG_LINES) : [];
   return { available: true, requested: isAction(requested) ? requested : null, last, log };
 }
 

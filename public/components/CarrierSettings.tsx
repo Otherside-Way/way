@@ -215,9 +215,11 @@ export function CarrierSettings({ carriers, pendingApply }: { carriers: Carrier[
         </div>
       )}
       {message && <StatusBadge label={message.text} tone={message.tone} />}
-      {list.map((c) => (
-        <CarrierCard key={c.mode} carrier={c} onChanged={changed} />
-      ))}
+      {list
+        .filter((c) => c.mode !== "direct" || c.enabled)
+        .map((c) => (
+          <CarrierCard key={c.mode} carrier={c} onChanged={changed} />
+        ))}
     </section>
   );
 }
