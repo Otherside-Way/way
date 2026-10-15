@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { z } from "zod";
 import { deleteSetting, getSetting, setSetting } from "./db";
 import { secretEquals } from "./equals";
@@ -10,6 +10,7 @@ const TELEPHONY_KEY = "telephony";
 const PUBLIC_IP_KEY = "public_ip";
 const BUNDLE_CONFIG_KEY = "bundle_config";
 const DOMAIN_KEY = "cabinet_domain";
+const SIP_SERVED_KEY = "sip_config_served";
 
 const host = z.string().trim().regex(/^[A-Za-z0-9.-]{1,253}$/, "host must be a hostname or an IPv4 address");
 const port = z.number().int().min(1).max(65535).default(5060);
@@ -413,6 +414,24 @@ export function kamailioConfig() {
   return { publicIp: getPublicIp(), modes };
 }
 
+function sipStartupFingerprint(): string {
+  const { publicIp, modes } = kamailioConfig();
+  const startup = Object.entries(modes).map(([mode, value]) => {
+    const { host, port, user, pass } = value as { host: string; port: number; user?: string; pass?: string };
+    return [mode, host, port, user ?? null, pass ?? null];
+  });
+  return createHash("sha256").update(JSON.stringify({ publicIp, startup })).digest("hex");
+}
+
+export function markSipConfigServed(): void {
+  setSetting(SIP_SERVED_KEY, sipStartupFingerprint());
+}
+
+export function sipConfigPending(): boolean {
+  const served = getSetting(SIP_SERVED_KEY);
+  return served !== null && served !== sipStartupFingerprint();
+}
+
 function importLegacyRoutes(env: Record<string, string | undefined>, mode: TrunkMode): void {
   const pattern = new RegExp(`^TRUNK_${mode.toUpperCase()}_ROUTE_([A-Z0-9_]+)_KEY$`);
   for (const [name, value] of Object.entries(env)) {
@@ -468,4 +487,10 @@ export function importLegacyTelephony(env: Record<string, string | undefined>): 
     }
   }
   return imported;
+}
+
+export function carrierFormInput(mode: TrunkMode, body: Record<string, unknown>): Record<string, unknown> {
+  if (mode !== "digest" || (typeof body.pass === "string" && body.pass !== "")) return body;
+  const current = getTelephony().modes.digest as { pass?: string } | undefined;
+  return { ...body, pass: current?.pass ?? "" };
 }

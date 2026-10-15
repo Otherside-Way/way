@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { deleteSetting } from "./db";
 import {
   addRoute,
@@ -24,6 +24,9 @@ import {
   trunkKeyLookup,
   trunkKeyMode,
   trunkKeysForCore,
+  markSipConfigServed,
+  sipConfigPending,
+  carrierFormInput,
 } from "./telephony";
 
 beforeEach(() => {
@@ -234,5 +237,69 @@ describe("telephony", () => {
     expect(isSourceAllowed("198.51.100.253")).toBe(false);
     expect(isSourceAllowed("")).toBe(false);
     expect(isSourceAllowed(null)).toBe(false);
+  });
+});
+
+describe("carrier changes waiting for the SIP proxy restart", () => {
+  beforeEach(() => {
+    deleteSetting("sip_config_served");
+  });
+
+  afterEach(() => {
+    for (const key of ["telephony", "sip_config_served"]) deleteSetting(key);
+  });
+
+  test("nothing waits before the proxy ever took its config", () => {
+    setCarrier("ipauth", { host: "198.51.100.77" });
+    expect(sipConfigPending()).toBe(false);
+  });
+
+  test("a new carrier address waits until the proxy takes the config again", () => {
+    setCarrier("ipauth", { host: "198.51.100.77" });
+    markSipConfigServed();
+    expect(sipConfigPending()).toBe(false);
+    setCarrier("ipauth", { host: "198.51.100.78" });
+    expect(sipConfigPending()).toBe(true);
+    markSipConfigServed();
+    expect(sipConfigPending()).toBe(false);
+  });
+
+  test("enabling or disabling a mode waits too", () => {
+    setCarrier("ipauth", { host: "198.51.100.77" });
+    markSipConfigServed();
+    setCarrier("digest", { host: "198.51.100.79", user: "u1", pass: "p1" });
+    expect(sipConfigPending()).toBe(true);
+    markSipConfigServed();
+    disableMode("digest");
+    expect(sipConfigPending()).toBe(true);
+  });
+
+  test("keys and prefixes are taken per call, so they never wait", () => {
+    setCarrier("ipauth", { host: "198.51.100.77" });
+    markSipConfigServed();
+    rotateKey("ipauth");
+    setCarrier("ipauth", { host: "198.51.100.77", prefix: "771#" });
+    addRoute("ipauth", "tdm", "02183");
+    expect(sipConfigPending()).toBe(false);
+  });
+});
+
+describe("carrier input from the cabinet form", () => {
+  afterEach(() => {
+    deleteSetting("telephony");
+  });
+
+  test("a blank digest password keeps the saved one", () => {
+    setCarrier("digest", { host: "198.51.100.79", user: "u1", pass: "kept-secret" });
+    expect(carrierFormInput("digest", { host: "198.51.100.80", user: "u1", pass: "" })).toMatchObject({ host: "198.51.100.80", pass: "kept-secret" });
+  });
+
+  test("a new digest password replaces the saved one", () => {
+    setCarrier("digest", { host: "198.51.100.79", user: "u1", pass: "kept-secret" });
+    expect(carrierFormInput("digest", { host: "198.51.100.79", user: "u1", pass: "new-secret" })).toMatchObject({ pass: "new-secret" });
+  });
+
+  test("other modes pass through untouched", () => {
+    expect(carrierFormInput("ipauth", { host: "198.51.100.77", pass: "" })).toEqual({ host: "198.51.100.77", pass: "" });
   });
 });

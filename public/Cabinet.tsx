@@ -15,14 +15,19 @@ import { DocsDialog } from "./components/DocsDialog";
 import { SendUploadDialog } from "./components/SendUploadDialog";
 import { BatchesDialog } from "./components/BatchesDialog";
 import { Toast } from "./components/Toast";
+import { FirstSteps } from "./components/FirstSteps";
 import type { BuildInfo } from "./lib/api";
 
 export function Cabinet({
   onLogout,
   build,
+  firstRun,
+  onFirstRunDone,
 }: {
   onLogout: () => void;
   build: BuildInfo | null;
+  firstRun: boolean;
+  onFirstRunDone: () => void;
 }) {
   const c = useCabinet();
 
@@ -128,6 +133,7 @@ export function Cabinet({
       <DocsDialog open={c.docsOpen} settings={c.settings} onClose={c.closeDocs} />
       <TranscriptDialog row={c.transcriptRow} data={c.transcript} busy={c.transcriptBusy} onClose={c.closeTranscript} />
       <RequestsDialog row={c.requestsRow} requests={c.requests} busy={c.busy} onClose={c.closeRequests} onResend={c.resendRequest} />
+      <FirstSteps open={firstRun} onClose={onFirstRunDone} />
       <Toast toast={c.toast} onClose={c.dismissToast} />
     </div>
   );

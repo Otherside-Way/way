@@ -5,6 +5,9 @@ import { keys } from "./keys";
 import { parseEnvLines, rtpenginePing, run } from "./cli";
 import { savePlatformConfig, DEFAULT_PLATFORM_FIELDS } from "./webhook";
 import { drainPushQueue } from "./platform";
+import { disableCarrierAndSync, saveCarrierAndSync } from "./core";
+import { setupPending } from "./setup";
+import { disableMode } from "./telephony";
 
 const received: Array<{ method: string; path: string; body: any }> = [];
 let registerReply: { status: number; body: unknown } = { status: 200, body: { registered: true, status: "active", ok: true, trunks: {} } };
@@ -213,6 +216,54 @@ describe("cli", () => {
     const sync = received.find((r) => r.path.endsWith("/trunks"))!;
     expect(Object.keys(sync.body.trunks)).toEqual(["digest"]);
     expect(sync.body.installationId).toBe(keys.installationId);
+  });
+
+  test("a carrier saved in the cabinet gets its number on the platform right away", async () => {
+    trunksReplyStatus = 200;
+    const saved = await saveCarrierAndSync("direct", { host: "198.51.100.90", port: 5070 });
+    expect(saved).toMatchObject({ mode: "direct", synced: true });
+    expect(Object.keys(syncedKeys)).toContain("direct");
+    const removed = await disableCarrierAndSync("direct");
+    expect(removed).toMatchObject({ mode: "direct", synced: true });
+    expect(Object.keys(syncedKeys)).not.toContain("direct");
+  });
+
+  test("a carrier is kept even when the platform cannot take its number yet", async () => {
+    trunksReplyStatus = 503;
+    const saved = await saveCarrierAndSync("direct", { host: "198.51.100.91" });
+    expect(saved).toMatchObject({ mode: "direct", synced: false });
+    expect((saved as { error?: string }).error).toMatch(/Telephony is not configured/);
+    expect((await run(["carrier", "get", "direct"])).output).toMatchObject({ host: "198.51.100.91" });
+    trunksReplyStatus = 200;
+    await disableCarrierAndSync("direct");
+  });
+
+  test("a bad carrier address is refused before anything is saved", async () => {
+    await expect(saveCarrierAndSync("direct", { host: "bad host!" })).rejects.toThrow(/hostname/);
+    expect((await run(["carrier", "get", "direct"])).output).toBeNull();
+  });
+
+  test("setup-pending tells the installer whether the cabinet waits for the first login", async () => {
+    deleteSetting("setup_code");
+    expect((await run(["setup-pending"])).output).toBe(false);
+    await run(["setup-code"], async () => "HN-CODE-9\n");
+    expect((await run(["setup-pending"])).output).toBe(true);
+    deleteSetting("setup_code");
+  });
+
+  test("setup-code takes the install code from stdin and opens the first login", async () => {
+    const { output } = await run(["setup-code"], async () => "HN-CODE-5678\n");
+    expect(output).toEqual({ pending: true });
+    expect(setupPending()).toBe(true);
+    await expect(run(["setup-code"], async () => "  \n")).rejects.toThrow(/install code/);
+  });
+
+  test("the doctor only warns while no carrier is set, so the install can finish", async () => {
+    for (const mode of ["ipauth", "digest", "direct"] as const) disableMode(mode);
+    const { output } = await run(["doctor", "--json"]);
+    const checks = output as { level: string; text: string }[];
+    expect(checks).toContainEqual({ level: "warn", text: "no carrier is set yet; add it in the cabinet under Settings → Carrier" });
+    expect(checks.some((c) => c.level === "fail" && c.text.includes("telephony mode"))).toBe(false);
   });
 
   test("the rtpengine ping reports a dead socket instead of hanging", async () => {

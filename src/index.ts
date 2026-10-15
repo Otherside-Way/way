@@ -4,8 +4,13 @@ import { staticPlugin } from "@elysiajs/static";
 import { openapi } from "@elysiajs/openapi";
 import { config } from "./config";
 import { checkKeysAgainstBase, initKeys, keys, writeSharedDecryptKey } from "./keys";
-import { DEFAULT_ROUTE, enabledModes, getManagedTelephony, getTelephony, importLegacyTelephony, isManagedMode, setRoutePrefix, trunkName, TRUNK_MODES, type ModeState, type TrunkMode } from "./telephony";
-import { addRouteAndSync, changeTrunkKeyAndSync, getCoreState, modesSummary, registerWithCore, removeRouteAndSync, startManagedConfigCron } from "./core";
+import { DEFAULT_ROUTE, enabledModes, getManagedTelephony, getPublicIp, getTelephony, importLegacyTelephony, isManagedMode, setRoutePrefix, sipConfigPending, carrierFormInput, trunkName, TRUNK_MODES, type ModeState, type TrunkMode } from "./telephony";
+import { probeOptions } from "./sip-probe";
+import { completeSetup, endSetup, setupPending } from "./setup";
+import { isPublicApiPath } from "./public-paths";
+import { controlStatus, requestAction } from "./control";
+import { ZodError } from "zod";
+import { addRouteAndSync, changeTrunkKeyAndSync, disableCarrierAndSync, getCoreState, modesSummary, registerWithCore, removeRouteAndSync, saveCarrierAndSync, startManagedConfigCron } from "./core";
 import { changeDecryptKey, changeEncryptionKeys, changeLogin, decryptKeyPending, encryptionKeysInfo, exportKeysEnv } from "./key-settings";
 import { secretEquals } from "./equals";
 import { internalFetch } from "./internal";
@@ -146,6 +151,25 @@ function trunkKeys() {
   });
 }
 
+function carrierMode(value: string): TrunkMode | null {
+  return (TRUNK_MODES as readonly string[]).includes(value) ? (value as TrunkMode) : null;
+}
+
+function carriers() {
+  const state = getTelephony();
+  return TRUNK_MODES.map((mode) => {
+    const current = state.modes[mode] as (ModeState & { user?: string; pass?: string }) | undefined;
+    if (!current) return { mode, enabled: false };
+    const primary = current.routes.find((r) => r.id === DEFAULT_ROUTE);
+    return { mode, enabled: true, host: current.host, port: current.port, user: current.user ?? "", hasPassword: Boolean(current.pass), prefix: primary?.prefix ?? "", managed: isManagedMode(mode) };
+  });
+}
+
+function errorText(e: unknown): string {
+  if (e instanceof ZodError) return e.issues.map((i) => i.message).join("; ");
+  return (e as Error).message;
+}
+
 function refuseManaged(mode: TrunkMode): string | null {
   return isManagedMode(mode) ? `the routes of ${mode} are set in the platform (client card); change them there` : null;
 }
@@ -162,8 +186,7 @@ function readCookie(header: string | undefined, name: string): string | undefine
 const api = new Elysia({ prefix: "/api" })
   .onBeforeHandle(({ request, headers, set }) => {
     const path = new URL(request.url).pathname;
-    if (path.endsWith("/login")) return;
-    if (path.endsWith("/health") || path.endsWith("/up")) return;
+    if (isPublicApiPath(path)) return;
     if (!verifyToken(readCookie(headers.cookie, "cabinet_session"))) {
       set.status = 401;
       return { error: "unauthorized" };
@@ -177,10 +200,29 @@ const api = new Elysia({ prefix: "/api" })
         set.status = 401;
         return { ok: false, error: "Invalid credentials" };
       }
+      endSetup();
       set.headers["Set-Cookie"] = `cabinet_session=${makeToken()}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_S}`;
       return { ok: true };
     },
     { body: t.Object({ user: t.String(), pass: t.String() }) },
+  )
+  .get("/setup", () => ({ pending: setupPending() }))
+  .post(
+    "/setup",
+    ({ body, set }) => {
+      try {
+        if (!completeSetup(body.code, body.password)) {
+          set.status = 401;
+          return { ok: false, error: "The install code is not right or was already used" };
+        }
+      } catch (e) {
+        set.status = 422;
+        return { ok: false, error: (e as Error).message };
+      }
+      set.headers["Set-Cookie"] = `cabinet_session=${makeToken()}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_S}`;
+      return { ok: true, user: keys.cabinetUser() };
+    },
+    { body: t.Object({ code: t.String({ maxLength: 256 }), password: t.String({ maxLength: 256 }) }) },
   )
   .post("/logout", ({ set }) => {
     set.headers["Set-Cookie"] = "cabinet_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0";
@@ -386,6 +428,8 @@ const api = new Elysia({ prefix: "/api" })
     defaults: DEFAULT_CRM_CONFIG,
     pushRatePerMin: getPushRate(),
     trunks: trunkKeys(),
+    carriers: carriers(),
+    sipPendingApply: sipConfigPending(),
     allowedSources: getManagedTelephony().allowedSources ?? [],
     keys: {
       ...encryptionKeysInfo(),
@@ -450,6 +494,66 @@ const api = new Elysia({ prefix: "/api" })
       }
     },
     { body: t.Optional(t.Object({ key: t.Optional(t.String({ maxLength: 256 })) })) },
+  )
+
+  .put(
+    "/settings/carrier/:mode",
+    async ({ params, body, set }) => {
+      const mode = carrierMode(params.mode);
+      if (!mode) {
+        set.status = 404;
+        return { error: `${params.mode} is not a carrier mode` };
+      }
+      try {
+        const result = await saveCarrierAndSync(mode, carrierFormInput(mode, body));
+        return { ...result, carriers: carriers(), trunks: trunkKeys(), sipPendingApply: sipConfigPending() };
+      } catch (e) {
+        set.status = 422;
+        return { error: errorText(e) };
+      }
+    },
+    { body: t.Record(t.String(), t.Unknown()) },
+  )
+
+  .delete("/settings/carrier/:mode", async ({ params, set }) => {
+    const mode = carrierMode(params.mode);
+    if (!mode || !enabledModes().includes(mode)) {
+      set.status = 404;
+      return { error: `${params.mode} is not enabled` };
+    }
+    try {
+      const result = await disableCarrierAndSync(mode);
+      return { ...result, carriers: carriers(), trunks: trunkKeys(), sipPendingApply: sipConfigPending() };
+    } catch (e) {
+      set.status = 422;
+      return { error: errorText(e) };
+    }
+  })
+
+  .post("/settings/carrier/:mode/probe", async ({ params, set }) => {
+    const mode = carrierMode(params.mode);
+    const current = mode ? (getTelephony().modes[mode] as { host: string; port: number; user?: string; pass?: string } | undefined) : undefined;
+    if (!mode || !current) {
+      set.status = 404;
+      return { error: `${params.mode} is not enabled` };
+    }
+    return probeOptions({ host: current.host, port: current.port, user: current.user, pass: current.pass, fromHost: getPublicIp() ?? "0.0.0.0" });
+  })
+
+  .get("/system", () => ({ version: buildInfo.version, sipPendingApply: sipConfigPending(), control: controlStatus() }))
+
+  .post(
+    "/system/:action",
+    ({ params, set }) => {
+      try {
+        requestAction(params.action);
+        return { ok: true, control: controlStatus() };
+      } catch (e) {
+        set.status = 409;
+        return { error: (e as Error).message };
+      }
+    },
+    { params: t.Object({ action: t.Union([t.Literal("update"), t.Literal("apply-sip")]) }) },
   )
 
   .get("/settings/keys.env", ({ set }) => {

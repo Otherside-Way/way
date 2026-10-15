@@ -2,7 +2,7 @@ import { decryptToken } from "./fpe";
 import { deleteSetting, getByToken, getSetting } from "./db";
 import { keys } from "./keys";
 import { secretEquals } from "./equals";
-import { isSourceAllowed, kamailioConfig, trunkKeyLookup } from "./telephony";
+import { isSourceAllowed, kamailioConfig, markSipConfigServed, trunkKeyLookup } from "./telephony";
 
 function detokenize(url: URL): Response {
   const raw = url.searchParams.get("t");
@@ -34,7 +34,10 @@ export function internalFetch(req: Request): Response {
   } else if (!(previous !== null && secretEquals(presented, previous))) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (url.pathname === "/config/kamailio") return Response.json(kamailioConfig());
+  if (url.pathname === "/config/kamailio") {
+    markSipConfigServed();
+    return Response.json(kamailioConfig());
+  }
   if (url.pathname === "/trunk-key") {
     const source = req.headers.get("x-source-ip");
     if (source !== null && !isSourceAllowed(source)) return Response.json({ error: "source not allowed" }, { status: 403 });

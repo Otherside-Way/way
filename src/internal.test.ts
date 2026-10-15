@@ -3,7 +3,7 @@ import { createUpload, insertNumbers } from "./db";
 import { encryptPhone } from "./fpe";
 import { internalFetch } from "./internal";
 import { keys, setClientPrefix } from "./keys";
-import { changeTrunkKey, saveManagedTelephony, setCarrier } from "./telephony";
+import { changeTrunkKey, saveManagedTelephony, setCarrier, sipConfigPending } from "./telephony";
 
 const call = (path: string, key: string | null = keys.decryptKey()) =>
   internalFetch(new Request(`http://cabinet:3501${path}`, { headers: key === null ? {} : { "x-decrypt-key": key } }));
@@ -32,6 +32,15 @@ describe("internal listener", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ phone: "+491512345678" });
     expect((await call(`/detokenize?t=${token.slice(1)}`).json()) as unknown).toEqual({ phone: "+491512345678" });
+  });
+
+  test("handing the SIP config to the proxy clears the changes waiting for it", async () => {
+    setCarrier("direct", { host: "10.9.9.9" });
+    await call("/config/kamailio").json();
+    setCarrier("direct", { host: "10.9.9.8" });
+    expect(sipConfigPending()).toBe(true);
+    await call("/config/kamailio").json();
+    expect(sipConfigPending()).toBe(false);
   });
 
   test("the SIP config carries the enabled modes with their keys", async () => {

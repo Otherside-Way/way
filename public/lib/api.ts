@@ -75,9 +75,41 @@ export type Settings = {
   defaults: CrmConfig;
   pushRatePerMin: number;
   trunks: TrunkMode[];
+  carriers: Carrier[];
+  sipPendingApply: boolean;
   allowedSources: string[];
   keys: CabinetKeys;
 };
+
+export type CarrierMode = "ipauth" | "digest" | "direct";
+
+export type Carrier = {
+  mode: CarrierMode;
+  enabled: boolean;
+  host?: string;
+  port?: number;
+  user?: string;
+  hasPassword?: boolean;
+  prefix?: string;
+  managed?: boolean;
+};
+
+export type CarrierChange = { mode?: CarrierMode; synced?: boolean; error?: string; carriers?: Carrier[]; sipPendingApply?: boolean };
+
+export type ProbeResult = { ok: boolean; status?: number; authenticated?: boolean; reason?: string; stage?: string; error?: string };
+
+export type ServerAction = "update" | "apply-sip";
+
+export type ControlStatus =
+  | { available: false }
+  | {
+      available: true;
+      requested: ServerAction | null;
+      last: { action: ServerAction; state: "running" | "ok" | "failed"; startedAt?: string; finishedAt?: string } | null;
+      log: string[];
+    };
+
+export type SystemInfo = { version: string; sipPendingApply: boolean; control: ControlStatus };
 
 export type CabinetKeys = {
   ff3Key: string;
@@ -203,6 +235,27 @@ export const api = {
       body: JSON.stringify({ user, pass }),
     }).then(async (r) => ({ ok: r.ok, ...(await r.json()) })),
   logout: (): Promise<unknown> => fetch("/api/logout", { method: "POST" }).then(json),
+  setupState: (): Promise<{ pending: boolean }> => fetch("/api/setup").then(json),
+  setup: (code: string, password: string): Promise<{ ok: boolean; user?: string; error?: string }> =>
+    fetch("/api/setup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, password }),
+    }).then(async (r) => ({ ...(await r.json()), ok: r.ok })),
+  saveCarrier: (mode: CarrierMode, body: Record<string, unknown>): Promise<CarrierChange> =>
+    fetch(`/api/settings/carrier/${mode}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json),
+  disableCarrier: (mode: CarrierMode): Promise<CarrierChange> => fetch(`/api/settings/carrier/${mode}`, { method: "DELETE" }).then(json),
+  probeCarrier: (mode: CarrierMode): Promise<ProbeResult> => fetch(`/api/settings/carrier/${mode}/probe`, { method: "POST" }).then(json),
+  system: (): Promise<SystemInfo> =>
+    fetch("/api/system").then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }),
+  runSystem: (action: ServerAction): Promise<{ ok?: boolean; error?: string }> => fetch(`/api/system/${action}`, { method: "POST" }).then(json),
   list: (page: number, size: number, q?: string, uploadId?: number | null): Promise<{ total: number; numbers: Row[] }> =>
     fetch(
       `/api/numbers?limit=${size}&offset=${page * size}` +

@@ -6,6 +6,8 @@ import { keys, setClientPrefix } from "./keys";
 import {
   addRoute,
   changeTrunkKey,
+  disableMode,
+  setCarrier,
   parseManagedTelephony,
   planManagedRoutes,
   saveManagedTelephony,
@@ -354,4 +356,26 @@ export function modesSummary() {
       routes: m.routes.map((r) => ({ id: r.id, prefix: r.prefix, rotating: Boolean(r.prevKey) })),
     };
   });
+}
+
+export type CarrierChange = { mode: TrunkMode; synced: boolean; error?: string };
+
+async function syncCarrier(mode: TrunkMode): Promise<CarrierChange> {
+  try {
+    const sync = await syncTrunks();
+    if (sync.httpStatus < 300) return { mode, synced: true };
+    return { mode, synced: false, error: syncError(sync) };
+  } catch (e) {
+    return { mode, synced: false, error: (e as Error).message };
+  }
+}
+
+export async function saveCarrierAndSync(mode: TrunkMode, input: unknown): Promise<CarrierChange> {
+  setCarrier(mode, input);
+  return syncCarrier(mode);
+}
+
+export async function disableCarrierAndSync(mode: TrunkMode): Promise<CarrierChange> {
+  disableMode(mode);
+  return syncCarrier(mode);
 }

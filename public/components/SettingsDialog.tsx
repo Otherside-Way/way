@@ -5,6 +5,8 @@ import { Button } from "./Button";
 import { Input } from "./Input";
 import { StatusBadge } from "./StatusBadge";
 import { TelephonyRoutes, type RouteActions } from "./TelephonyRoutes";
+import { CarrierSettings } from "./CarrierSettings";
+import { ServerSection } from "./ServerSection";
 import type { CrmConfig, EncryptionInput, Settings, TestResult, PlatformConfig } from "../lib/api";
 
 type HeaderPair = { name: string; value: string };
@@ -258,6 +260,8 @@ export function SettingsDialog({
           ))}
         </section>
 
+        <CarrierSettings carriers={settings.carriers} pendingApply={settings.sipPendingApply} />
+
         <TelephonyRoutes trunks={settings.trunks} allowedSources={settings.allowedSources} busy={busy} actions={routeActions} />
 
         <section className="flex flex-col gap-3">
@@ -342,6 +346,8 @@ export function SettingsDialog({
             </div>
           </div>
         </section>
+
+        <ServerSection />
 
         {test && (
           <section className="flex flex-col gap-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">

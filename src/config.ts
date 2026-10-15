@@ -2,6 +2,7 @@ export const config = {
   port: Number(process.env.PORT ?? 3500),
   dbPath: process.env.DB_PATH ?? "cabinet.sqlite",
   sharedDir: process.env.SHARED_DIR ?? null,
+  controlDir: process.env.CONTROL_DIR ?? null,
   platform: {
     baseUrl: process.env.PLATFORM_BASE_URL,
     slug: process.env.PLATFORM_SLUG,

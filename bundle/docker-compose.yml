@@ -11,9 +11,12 @@ services:
       INTERNAL_PORT: 3501
       DB_PATH: /data/cabinet.sqlite
       SHARED_DIR: /shared
+      CONTROL_DIR: /control
     volumes:
       - cabinet-data:/data
       - shared:/shared
+      - ./control:/control:ro
+      - ./control/inbox:/control/inbox
     healthcheck:
       test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:3500/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 10s

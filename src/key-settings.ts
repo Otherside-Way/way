@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import { endSetup } from "./setup";
 import { countNumbers, getSetting, setSetting } from "./db";
 import { encryptPhoneWith, resetCipher, type FpeKeys } from "./fpe";
 import { DECRYPT_KEY_PREV } from "./internal";
@@ -52,6 +53,7 @@ export function changeLogin(user: string, password: string): void {
   const nextPassword = validated("cabinet_password", password);
   setSetting("secret.cabinet_user", nextUser);
   setSetting("secret.cabinet_password", nextPassword);
+  endSetup();
 }
 
 export function changeDecryptKey(value?: string): string {

@@ -39,7 +39,7 @@ section "Kamailio"
 start_line="$(compose logs --no-log-prefix kamailio 2>/dev/null | grep 'Starting Kamailio' | tail -1)"
 if [ -n "$start_line" ]; then
   ok "${start_line#*Starting Kamailio }"
-  case "$start_line" in *"branches: none"*) bad "kamailio accepts no mode; calls from the platform are refused" ;; esac
+  case "$start_line" in *"branches: none"*) warn "no carrier is set yet; add it in the cabinet under Settings → Carrier and press Apply" ;; esac
 else
   bad "kamailio never started; see: docker compose logs kamailio"
 fi

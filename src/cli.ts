@@ -33,7 +33,9 @@ import {
   setRoutePrefix,
   TRUNK_MODES,
   type TrunkMode,
+  sipConfigPending,
 } from "./telephony";
+import { beginSetup, setupPending } from "./setup";
 import { buildInfo } from "./version";
 import { getPlatformConfig } from "./webhook";
 
@@ -153,7 +155,8 @@ export async function doctor(): Promise<Check[]> {
   add(queue.pending > 0 ? "warn" : "ok", queue.pending > 0 ? `${queue.pending} call(s) waiting to be sent to the platform` : "nothing waits to be sent to the platform");
 
   const modes = modesSummary();
-  if (modes.length === 0) add("fail", "no telephony mode is enabled; no call can leave this server");
+  if (modes.length === 0) add("warn", "no carrier is set yet; add it in the cabinet under Settings → Carrier");
+  if (sipConfigPending()) add("warn", "carrier changes wait for Apply in Settings → Carrier; the SIP proxy still uses the previous ones");
 
   let comparison: Awaited<ReturnType<typeof compareTelephonyWithCore>> | null = null;
   try {
@@ -341,6 +344,16 @@ export async function run(argv: string[], stdin: () => Promise<string> = readStd
     case "rtpengine-ping":
       output = await rtpenginePing(sub ?? "172.28.0.1:22222");
       if (!(output as { ok: boolean }).ok) exitCode = 1;
+      break;
+    case "setup-code": {
+      const code = (await stdin()).trim();
+      if (!code) throw new CliError("setup-code reads the install code from stdin");
+      beginSetup(code);
+      output = { pending: true };
+      break;
+    }
+    case "setup-pending":
+      output = setupPending();
       break;
     case "platform-key":
       output = getPlatformConfig().apiKey;
