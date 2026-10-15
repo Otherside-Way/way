@@ -1,0 +1,91 @@
+name: images
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Image tag, for example 0.4.2 or 0.4.2-rc.1
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/otherside-way
+  RTPENGINE_SOURCE: docker.io/drachtio/rtpengine@sha256:d5bf3715baa197d89f89a70207d06d5509a4284b7392310a94a466ace07afb96
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${INPUT_VERSION:-${GITHUB_REF_NAME#v}}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "not a version: $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$GITHUB_OUTPUT"
+          suffix=""
+          case "$version" in *-*) ;; *) suffix=latest ;; esac
+          for name in cabinet kamailio rtpengine; do
+            tags="$REGISTRY/hn-$name:$version"
+            [ -n "$suffix" ] && tags="$tags,$REGISTRY/hn-$name:$suffix"
+            echo "$name=$tags" >>"$GITHUB_OUTPUT"
+          done
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cabinet
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.version.outputs.cabinet }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ steps.version.outputs.time }}
+
+      - name: SIP proxy
+        uses: docker/build-push-action@v6
+        with:
+          context: sip_proxy
+          file: sip_proxy/docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.version.outputs.kamailio }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Media relay
+        env:
+          TAGS: ${{ steps.version.outputs.rtpengine }}
+        run: |
+          args=()
+          IFS=, read -ra list <<<"$TAGS"
+          for tag in "${list[@]}"; do args+=(-t "$tag"); done
+          docker buildx imagetools create "${args[@]}" \
+            --annotation "index:org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            "$RTPENGINE_SOURCE"

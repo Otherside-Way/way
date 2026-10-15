@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.sqlite
+*.sqlite-*
+.env
+.env.*
+!.env.example
+.idea/
+.DS_Store
+.deploy.env
+.token.txt

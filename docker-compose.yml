@@ -1,0 +1,79 @@
+services:
+  cabinet:
+    build: .
+    image: ghcr.io/otherside-way/hn-cabinet:latest
+    ports:
+      - "3500:3500"
+    environment:
+      PORT: 3500
+      FF3_KEY: ${FF3_KEY:?set FF3_KEY in .env}
+      FF3_TWEAK: ${FF3_TWEAK:-D8E7920AFA330A73}
+      ROUTE_DIGIT: ${ROUTE_DIGIT:-9}
+      DECRYPT_KEY: ${DECRYPT_KEY:?set DECRYPT_KEY in .env}
+      CABINET_USER: ${CABINET_USER:-admin}
+      CABINET_PASSWORD: ${CABINET_PASSWORD:?set CABINET_PASSWORD in .env}
+      INTERNAL_HOST: 0.0.0.0
+      INTERNAL_PORT: 3501
+      CLIENT_PREFIX: ${CLIENT_PREFIX:-}
+      PLATFORM_BASE_URL: ${PLATFORM_BASE_URL:-}
+      PLATFORM_SLUG: ${PLATFORM_SLUG:-}
+      PLATFORM_API_KEY: ${PLATFORM_API_KEY:-}
+      PLATFORM_PLAYER_SEGMENT: ${PLATFORM_PLAYER_SEGMENT:-hidden_base}
+      DB_PATH: /data/cabinet.sqlite
+    volumes:
+      - cabinet-data:/data
+    restart: unless-stopped
+
+  kamailio:
+      build:
+        context: ./sip_proxy
+        dockerfile: docker/Dockerfile
+      image: ghcr.io/otherside-way/hn-kamailio:latest
+      ports:
+        - "5060:5060/udp"
+        - "5060:5060/tcp"
+      environment:
+        MY_PUBLIC_IP: ${MY_PUBLIC_IP:?set MY_PUBLIC_IP in .env}
+        DECRYPT_KEY: ${DECRYPT_KEY:?set DECRYPT_KEY in .env}
+        DB_URL: ${DB_URL:-sqlite:///var/lib/kamailio/kamailio.db}
+        DETOKEN_URL: ${DETOKEN_URL:-http://cabinet:3501/detokenize}
+        TRUNK_IPAUTH_API_KEY: ${TRUNK_IPAUTH_API_KEY:?set TRUNK_IPAUTH_API_KEY in .env}
+        TRUNK_DIGEST_API_KEY: ${TRUNK_DIGEST_API_KEY:?set TRUNK_DIGEST_API_KEY in .env}
+        TRUNK_DIRECT_API_KEY: ${TRUNK_DIRECT_API_KEY:?set TRUNK_DIRECT_API_KEY in .env}
+        TRUNK_IPAUTH_HOST: ${TRUNK_IPAUTH_HOST:?set TRUNK_IPAUTH_HOST in .env}
+        TRUNK_IPAUTH_PORT: ${TRUNK_IPAUTH_PORT:-5060}
+        TRUNK_IPAUTH_PREFIX: ${TRUNK_IPAUTH_PREFIX:?set TRUNK_IPAUTH_PREFIX in .env}
+        TRUNK_DIGEST_HOST: ${TRUNK_DIGEST_HOST:?set TRUNK_DIGEST_HOST in .env}
+        TRUNK_DIGEST_PORT: ${TRUNK_DIGEST_PORT:-5060}
+        TRUNK_DIGEST_USER: ${TRUNK_DIGEST_USER:?set TRUNK_DIGEST_USER in .env}
+        TRUNK_DIGEST_PASS: ${TRUNK_DIGEST_PASS:?set TRUNK_DIGEST_PASS in .env}
+        TRUNK_DIRECT_HOST: ${TRUNK_DIRECT_HOST:?set TRUNK_DIRECT_HOST in .env}
+        TRUNK_DIRECT_PORT: ${TRUNK_DIRECT_PORT:-5060}
+      entrypoint: ["/usr/bin/stdbuf", "-oL", "-eL", "/entrypoint.sh"]
+      depends_on:
+        - cabinet
+        - rtpengine
+      restart: unless-stopped
+
+  rtpengine:
+    image: drachtio/rtpengine:latest
+    network_mode: host
+    command:
+      - rtpengine
+      - --interface=${RTPENGINE_INTERFACE}
+      - --listen-ng=172.28.0.1:22222
+      - --listen-http=172.28.0.1:8080
+      - --port-min=${RTP_PORT_MIN:-30000}
+      - --port-max=${RTP_PORT_MAX:-30500}
+      - --log-level=5
+    restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
+
+volumes:
+  cabinet-data:
