@@ -109,7 +109,8 @@ if [ "$(sqlite3 "$DB_FILE" "SELECT count(*) FROM sqlite_master WHERE type='table
     { echo "BEGIN;"; cat /usr/share/kamailio/db_sqlite/dialog-create.sql; echo "COMMIT;"; } | sqlite3 -bail "$DB_FILE"
 fi
 
+export SIP_PORT="${SIP_PORT:-5060}"
 BRANCHES="$(echo $ENABLED | tr ' ' ',')"
-echo "[entrypoint] Starting Kamailio on ${MY_PUBLIC_IP}:5060 branches: ${BRANCHES:-none}"
+echo "[entrypoint] Starting Kamailio on ${MY_PUBLIC_IP}:${SIP_PORT} branches: ${BRANCHES:-none}"
 
 exec kamailio -DD -E -e -f /etc/kamailio/kamailio.cfg $DEFINES
