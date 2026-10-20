@@ -7,6 +7,7 @@ services:
       - "${CABINET_BIND:-0.0.0.0}:3500:3500"
     environment:
       PORT: 3500
+      SIP_PORT: ${SIP_PORT:-5060}
       INTERNAL_HOST: 0.0.0.0
       INTERNAL_PORT: 3501
       DB_PATH: /data/cabinet.sqlite
@@ -28,10 +29,11 @@ services:
   kamailio:
     image: ${HN_IMAGE_KAMAILIO:?run install.sh}
     ports:
-      - "5060:5060/udp"
-      - "5060:5060/tcp"
+      - "${SIP_PORT:-5060}:${SIP_PORT:-5060}/udp"
+      - "${SIP_PORT:-5060}:${SIP_PORT:-5060}/tcp"
     environment:
       HN_CONFIG: cabinet
+      SIP_PORT: ${SIP_PORT:-5060}
       SHARED_DIR: /shared
       CABINET_INTERNAL_URL: http://cabinet:3501
       DB_URL: sqlite:///var/lib/kamailio/kamailio.db

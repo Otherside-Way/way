@@ -98,6 +98,25 @@ describe("cli", () => {
     expect((await run(["bundle-env"])).output).toContain("HN_REGISTRY_TOKEN=ghp_x");
   });
 
+  test("a sip port other than 5060 goes to the platform with the registration, 5060 stays implicit", async () => {
+    const body = JSON.stringify({ coreUrl: `http://127.0.0.1:${core.port}`, slug: "acme", apiKey: "ak_live_cabinet_key_0123456789", publicIp: "203.0.113.233" });
+    expect((await run(["connect"], async () => body)).exitCode).toBe(0);
+    expect(received.filter((r) => r.path.endsWith("/register")).at(-1)!.body).not.toHaveProperty("sipPort");
+    process.env.SIP_PORT = "5062";
+    try {
+      await run(["register"]);
+      expect(received.filter((r) => r.path.endsWith("/register")).at(-1)!.body.sipPort).toBe(5062);
+      process.env.SIP_PORT = "5060";
+      await run(["register"]);
+      expect(received.filter((r) => r.path.endsWith("/register")).at(-1)!.body).not.toHaveProperty("sipPort");
+      process.env.SIP_PORT = "";
+      await run(["register"]);
+      expect(received.filter((r) => r.path.endsWith("/register")).at(-1)!.body).not.toHaveProperty("sipPort");
+    } finally {
+      delete process.env.SIP_PORT;
+    }
+  });
+
   test("the cabinet domain goes to the platform with every registration until it is cleared", async () => {
     const body = JSON.stringify({ coreUrl: `http://127.0.0.1:${core.port}`, slug: "acme", apiKey: "ak_live_cabinet_key_0123456789", publicIp: "203.0.113.233", domain: "Cabinet.Example.com" });
     expect((await run(["connect"], async () => body)).exitCode).toBe(0);

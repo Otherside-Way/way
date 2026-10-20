@@ -178,9 +178,12 @@ export async function registerWithCore(options: { takeover?: boolean } = {}): Pr
   const publicIp = getPublicIp();
   if (!publicIp) throw new Error("the public ip of this server is not set");
   const domain = getDomain();
+  const configuredPort = Number(process.env.SIP_PORT);
+  const sipPort = Number.isInteger(configuredPort) && configuredPort >= 1024 && configuredPort <= 65535 ? configuredPort : 5060;
   const res = await coreRequest<Record<string, unknown>>("POST", "register", {
     publicIp,
     ...(domain ? { domain } : {}),
+    ...(sipPort !== 5060 ? { sipPort } : {}),
     coreKey: ensureCoreKey(),
     installationId: keys.installationId,
     ff3Fingerprint: keys.fingerprint,

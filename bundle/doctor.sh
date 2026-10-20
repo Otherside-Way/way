@@ -28,12 +28,14 @@ done
 loops="$(compose ps -q 2>/dev/null | xargs -r docker inspect -f '{{.Name}} {{.RestartCount}}' 2>/dev/null | awk '$2 > 3 {print $1}')"
 [ -n "$loops" ] && warn "restart loops: $loops" || ok "no restart loops"
 
+sip="$(sed -n "s/^SIP_PORT=//p" "$HN_DIR/.env" 2>/dev/null | tail -1)"
+[[ "$sip" =~ ^[0-9]{4,5}$ ]] && [ "$sip" -ge 1024 ] && [ "$sip" -le 65535 ] || sip=5060
 section "Ports"
 published() { [ -n "$(docker ps -q --filter "publish=$1" --filter "label=com.docker.compose.project=hidden-numbers")" ]; }
 listening() { command -v ss >/dev/null 2>&1 && ss -Hln"$1" 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$2\$"; }
 { published 3500/tcp || listening t 3500; } && ok "cabinet is published on 3500/tcp" || bad "nothing serves 3500/tcp"
-{ published 5060/udp || listening u 5060; } && ok "SIP is published on 5060/udp" || bad "nothing serves 5060/udp"
-{ published 5060/tcp || listening t 5060; } && ok "SIP is published on 5060/tcp" || warn "nothing serves 5060/tcp"
+{ published "$sip/udp" || listening u "$sip"; } && ok "SIP is published on $sip/udp" || bad "nothing serves $sip/udp"
+{ published "$sip/tcp" || listening t "$sip"; } && ok "SIP is published on $sip/tcp" || warn "nothing serves $sip/tcp"
 
 section "Kamailio"
 start_line="$(compose logs --no-log-prefix kamailio 2>/dev/null | grep 'Starting Kamailio' | tail -1)"
@@ -55,11 +57,11 @@ else
 fi
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
   rules="$(ufw status 2>/dev/null)"
-  for rule in $web_rules "5060/udp" "5060/tcp" "30000:30500/udp"; do
+  for rule in $web_rules "$sip/udp" "$sip/tcp" "30000:30500/udp"; do
     echo "$rules" | grep -q "^$rule" && ok "ufw allows $rule" || warn "ufw is active and does not allow $rule"
   done
 else
-  ok "no active ufw firewall on this host; make sure the provider firewall opens ${web_rules// /, }, 5060/udp+tcp and 30000-30500/udp"
+  ok "no active ufw firewall on this host; make sure the provider firewall opens ${web_rules// /, }, $sip/udp+tcp and 30000-30500/udp"
 fi
 
 if [ -n "${CABINET_DOMAIN:-}" ]; then

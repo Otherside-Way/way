@@ -34,7 +34,7 @@ describe("server actions", () => {
 
   test("nothing new starts while an action runs", () => {
     const dir = controlDir();
-    writeFileSync(join(dir, "status.json"), JSON.stringify({ action: "update", state: "running", startedAt: "2026-10-15T15:00:00Z" }));
+    writeFileSync(join(dir, "status.json"), JSON.stringify({ action: "update", state: "running", startedAt: new Date().toISOString() }));
     expect(() => requestAction("apply-sip", dir)).toThrow(/running/);
     expect(existsSync(join(dir, "inbox", "request"))).toBe(false);
   });
