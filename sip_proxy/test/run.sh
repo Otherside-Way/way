@@ -8,7 +8,7 @@ run_mode() {
     $compose down -v --remove-orphans >/dev/null 2>&1
     $compose up -d cabinet kamailio carrier >/dev/null
     tries=0
-    until $compose logs kamailio 2>/dev/null | grep -q "Starting Kamailio"; do
+    until $compose logs kamailio 2>/dev/null | grep -q "SO_SNDBUF is finally"; do
         tries=$((tries + 1))
         if [ "$tries" -ge 30 ]; then echo "$1: kamailio did not start"; $compose down -v --remove-orphans >/dev/null 2>&1; return 1; fi
         sleep 1
