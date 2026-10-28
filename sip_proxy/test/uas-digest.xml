@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<scenario name="carrier asks for a password, needs the trunk login in Contact and hangs up">
+  <recv request="INVITE" />
+  <send>
+    <![CDATA[
+      SIP/2.0 401 Unauthorized
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag02[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      WWW-Authenticate: Digest realm="carrier", nonce="0123456789abcdef", algorithm=MD5
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <recv request="INVITE" rrs="true">
+    <action>
+      <ereg regexp="^ *&lt;sip:winberry_\.at\.cc\.winberry@172\.30\.0\.10:5060&gt;" search_in="hdr" header="Contact:" check_it="true" assign_to="contact" />
+      <ereg regexp="Digest .*username=.winberry_\.at\.cc\.winberry." search_in="hdr" header="Authorization:" check_it="true" assign_to="auth" />
+      <log message="carrier got Authorization: [$auth]" />
+      <log message="carrier got Contact: [$contact]" />
+    </action>
+  </recv>
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      [last_Record-Route:]
+      Contact: <sip:carrier@[local_ip]:[local_port]>
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <pause milliseconds="300" />
+  <send>
+    <![CDATA[
+      BYE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      From: [last_To:]
+      To: [last_From:]
+      [routes]
+      Call-ID: [call_id]
+      CSeq: 1 BYE
+      Max-Forwards: 70
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <recv response="200" />
+</scenario>

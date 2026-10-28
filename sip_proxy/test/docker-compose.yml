@@ -1,0 +1,53 @@
+name: hn-sip-test
+networks:
+  sip:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+services:
+  cabinet:
+    image: oven/bun:1-alpine
+    environment:
+      MODE: ${MODE:-ipauth}
+    command: ["bun", "/test/cabinet.ts"]
+    volumes:
+      - ./:/test:ro
+      - shared:/shared
+    networks:
+      sip:
+        ipv4_address: 172.30.0.20
+  kamailio:
+    image: ${HN_KAMAILIO_IMAGE:-ghcr.io/otherside-way/hn-kamailio:0.5.1}
+    entrypoint: ["/bin/sh", "/test-entrypoint.sh"]
+    environment:
+      HN_CONFIG: cabinet
+      CABINET_INTERNAL_URL: http://172.30.0.20:3501
+      DB_URL: sqlite:///tmp/kamailio.sqlite
+      SIP_PORT: "5060"
+    volumes:
+      - ../kamailio/kamailio.cfg:/etc/kamailio/kamailio.cfg:ro
+      - ../docker/entrypoint.sh:/test-entrypoint.sh:ro
+      - shared:/shared
+    depends_on: [cabinet]
+    networks:
+      sip:
+        ipv4_address: 172.30.0.10
+  carrier:
+    image: wr-sipp:3.7
+    command: ["-sf", "/test/${CARRIER_SCENARIO:-uas.xml}", "-i", "172.30.0.30", "-p", "5060", "-m", "1", "-timeout", "20s", "-timeout_error", "-trace_err", "-error_file", "/dev/stdout"]
+    volumes:
+      - ./:/test:ro
+    networks:
+      sip:
+        ipv4_address: 172.30.0.30
+  platform:
+    image: wr-sipp:3.7
+    command: ["172.30.0.10:5060", "-sf", "/test/uac.xml", "-i", "172.30.0.40", "-p", "5060", "-m", "1", "-timeout", "20s", "-timeout_error", "-trace_err", "-error_file", "/dev/stdout"]
+    volumes:
+      - ./:/test:ro
+    depends_on: [kamailio, carrier]
+    networks:
+      sip:
+        ipv4_address: 172.30.0.40
+volumes:
+  shared:
