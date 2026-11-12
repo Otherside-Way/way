@@ -41,6 +41,10 @@ import { getPlatformConfig } from "./webhook";
 
 export class CliError extends Error {}
 
+export const FEATURES = ["instances"] as const;
+
+const rtpengineNg = () => process.env.RTPENGINE_NG?.trim() || "172.28.0.1:22222";
+
 export function parseEnvLines(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const raw of text.split(/\r?\n/)) {
@@ -201,8 +205,9 @@ export async function doctor(): Promise<Check[]> {
   const allowed = getManagedTelephony().allowedSources ?? [];
   add("ok", allowed.length > 0 ? `SIP is accepted only from ${allowed.join(", ")} (set in the platform)` : "SIP is accepted from any address (no allow list in the platform)");
 
-  const rtp = await rtpenginePing("172.28.0.1:22222", 1500).catch(() => ({ ok: false }));
-  add(rtp.ok ? "ok" : "fail", rtp.ok ? "rtpengine answers on 172.28.0.1:22222" : "rtpengine does not answer on 172.28.0.1:22222; calls would connect without sound");
+  const ng = rtpengineNg();
+  const rtp = await rtpenginePing(ng, 1500).catch(() => ({ ok: false }));
+  add(rtp.ok ? "ok" : "fail", rtp.ok ? `rtpengine answers on ${ng}` : `rtpengine does not answer on ${ng}; calls would connect without sound`);
   return checks;
 }
 
@@ -342,7 +347,7 @@ export async function run(argv: string[], stdin: () => Promise<string> = readStd
       break;
     }
     case "rtpengine-ping":
-      output = await rtpenginePing(sub ?? "172.28.0.1:22222");
+      output = await rtpenginePing(sub ?? rtpengineNg());
       if (!(output as { ok: boolean }).ok) exitCode = 1;
       break;
     case "setup-code": {
@@ -364,6 +369,9 @@ export async function run(argv: string[], stdin: () => Promise<string> = readStd
       if (report.some((c) => c.level === "fail")) exitCode = 1;
       break;
     }
+    case "features":
+      output = FEATURES.join("\n");
+      break;
     case "credentials":
       output = { user: keys.cabinetUser(), password: keys.cabinetPassword() };
       break;
@@ -378,7 +386,7 @@ export async function run(argv: string[], stdin: () => Promise<string> = readStd
       break;
     default:
       throw new CliError(
-        "commands: import, status, connect, register [--takeover], sync-config, bundle-env, public-ip <ip>, domain [name|--clear], carrier [set|disable|get <mode>] | carrier route add|remove|prefix <mode> <name> [prefix], probe <mode>, trunks sync|compare|rotate|finish, rtpengine-ping [host:port], credentials, password [new], export-keys",
+        "commands: import, status, connect, register [--takeover], sync-config, bundle-env, public-ip <ip>, domain [name|--clear], carrier [set|disable|get <mode>] | carrier route add|remove|prefix <mode> <name> [prefix], probe <mode>, trunks sync|compare|rotate|finish, rtpengine-ping [host:port], features, credentials, password [new], export-keys",
       );
   }
 

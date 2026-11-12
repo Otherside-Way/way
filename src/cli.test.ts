@@ -1,5 +1,8 @@
 import { createHash } from "crypto";
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { deleteSetting } from "./db";
 import { keys } from "./keys";
 import { parseEnvLines, rtpenginePing, run } from "./cli";
@@ -46,7 +49,17 @@ const core = Bun.serve({
   },
 });
 
-afterAll(() => core.stop(true));
+const tempDirs: string[] = [];
+
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
+
+afterAll(() => {
+  core.stop(true);
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 beforeEach(() => {
   received.length = 0;
@@ -114,6 +127,52 @@ describe("cli", () => {
       expect(received.filter((r) => r.path.endsWith("/register")).at(-1)!.body).not.toHaveProperty("sipPort");
     } finally {
       delete process.env.SIP_PORT;
+    }
+  });
+
+  test("a cabinet port other than 3500 goes to the platform with the registration, 3500 stays implicit", async () => {
+    const original = process.env.CABINET_PORT;
+    const body = JSON.stringify({ coreUrl: `http://127.0.0.1:${core.port}`, slug: "acme", apiKey: "ak_live_cabinet_key_0123456789", publicIp: "203.0.113.233" });
+    try {
+      delete process.env.CABINET_PORT;
+      expect((await run(["connect"], async () => body)).exitCode).toBe(0);
+      expect(received.filter((r) => r.path.endsWith("/register")).at(-1)!.body).not.toHaveProperty("cabinetPort");
+      process.env.CABINET_PORT = "3501";
+      await run(["register"]);
+      expect(received.filter((r) => r.path.endsWith("/register")).at(-1)!.body.cabinetPort).toBe(3501);
+      process.env.CABINET_PORT = "3500";
+      await run(["register"]);
+      expect(received.filter((r) => r.path.endsWith("/register")).at(-1)!.body).not.toHaveProperty("cabinetPort");
+      process.env.CABINET_PORT = "";
+      await run(["register"]);
+      expect(received.filter((r) => r.path.endsWith("/register")).at(-1)!.body).not.toHaveProperty("cabinetPort");
+    } finally {
+      restoreEnv("CABINET_PORT", original);
+    }
+  });
+
+  test("a cabinet port that is not a usable port is left out of the registration with one warning naming it", async () => {
+    const original = process.env.CABINET_PORT;
+    const body = JSON.stringify({ coreUrl: `http://127.0.0.1:${core.port}`, slug: "acme", apiKey: "ak_live_cabinet_key_0123456789", publicIp: "203.0.113.233" });
+    expect((await run(["connect"], async () => body)).exitCode).toBe(0);
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      for (const bad of ["abc", "80", "70000", "3501.5"]) {
+        errors.mockClear();
+        process.env.CABINET_PORT = bad;
+        await run(["register"]);
+        expect(received.filter((r) => r.path.endsWith("/register")).at(-1)!.body).not.toHaveProperty("cabinetPort");
+        const warnings = errors.mock.calls.map((c) => String(c[0])).filter((line) => line.includes("CABINET_PORT"));
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toContain(`CABINET_PORT=${bad}`);
+      }
+      errors.mockClear();
+      process.env.CABINET_PORT = "3501";
+      await run(["register"]);
+      expect(errors.mock.calls.some((c) => String(c[0]).includes("CABINET_PORT"))).toBe(false);
+    } finally {
+      errors.mockRestore();
+      restoreEnv("CABINET_PORT", original);
     }
   });
 
@@ -300,5 +359,44 @@ describe("cli", () => {
     });
     expect(await rtpenginePing(`127.0.0.1:${fake.port}`, 1000)).toMatchObject({ ok: true });
     fake.close();
+  });
+
+  test("features lists what this bundle supports, one per line, and includes instances", async () => {
+    const { output, exitCode } = await run(["features"]);
+    expect(exitCode).toBe(0);
+    expect(String(output).split("\n")).toContain("instances");
+  });
+
+  test("the installer reads features from the cli output as plain lines", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hn-features-"));
+    tempDirs.push(dir);
+    const proc = Bun.spawnSync([process.execPath, "src/cli.ts", "features"], { cwd: join(import.meta.dir, ".."), env: { PATH: process.env.PATH ?? "", DB_PATH: join(dir, "cabinet.sqlite") } });
+    expect(proc.exitCode).toBe(0);
+    expect(proc.stdout.toString().split("\n")).toContain("instances");
+  });
+
+  test("the doctor and rtpengine-ping ask the rtpengine of this instance from RTPENGINE_NG", async () => {
+    const original = process.env.RTPENGINE_NG;
+    for (const mode of ["ipauth", "digest", "direct"] as const) disableMode(mode);
+    const fake = await Bun.udpSocket({
+      socket: {
+        data(socket, buf, port, address) {
+          const [cookie] = Buffer.from(buf).toString().split(" ");
+          socket.send(`${cookie} d6:result4:ponge`, port, address);
+        },
+      },
+    });
+    try {
+      process.env.RTPENGINE_NG = `127.0.0.1:${fake.port}`;
+      expect(await run(["rtpengine-ping"])).toMatchObject({ exitCode: 0, output: { ok: true } });
+      const checks = (await run(["doctor", "--json"])).output as { level: string; text: string }[];
+      expect(checks).toContainEqual({ level: "ok", text: `rtpengine answers on 127.0.0.1:${fake.port}` });
+      delete process.env.RTPENGINE_NG;
+      const classic = (await run(["doctor", "--json"])).output as { level: string; text: string }[];
+      expect(classic.some((c) => c.text.startsWith("rtpengine") && c.text.includes("172.28.0.1:22222"))).toBe(true);
+    } finally {
+      restoreEnv("RTPENGINE_NG", original);
+      fake.close();
+    }
   });
 });

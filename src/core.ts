@@ -174,16 +174,25 @@ export type RegisterResult = {
   body: Record<string, unknown>;
 };
 
+function portFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  const configured = Number(raw);
+  if (Number.isInteger(configured) && configured >= 1024 && configured <= 65535) return configured;
+  if (raw) console.error(`[hidden-numbers] ${name}=${raw} is not a port between 1024 and 65535; using ${fallback}`);
+  return fallback;
+}
+
 export async function registerWithCore(options: { takeover?: boolean } = {}): Promise<RegisterResult> {
   const publicIp = getPublicIp();
   if (!publicIp) throw new Error("the public ip of this server is not set");
   const domain = getDomain();
-  const configuredPort = Number(process.env.SIP_PORT);
-  const sipPort = Number.isInteger(configuredPort) && configuredPort >= 1024 && configuredPort <= 65535 ? configuredPort : 5060;
+  const sipPort = portFromEnv("SIP_PORT", 5060);
+  const cabinetPort = portFromEnv("CABINET_PORT", 3500);
   const res = await coreRequest<Record<string, unknown>>("POST", "register", {
     publicIp,
     ...(domain ? { domain } : {}),
     ...(sipPort !== 5060 ? { sipPort } : {}),
+    ...(cabinetPort !== 3500 ? { cabinetPort } : {}),
     coreKey: ensureCoreKey(),
     installationId: keys.installationId,
     ff3Fingerprint: keys.fingerprint,
