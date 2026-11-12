@@ -110,7 +110,17 @@ if [ "$(sqlite3 "$DB_FILE" "SELECT count(*) FROM sqlite_master WHERE type='table
 fi
 
 export SIP_PORT="${SIP_PORT:-5060}"
+ignore_rtpengine_sock() {
+    echo "[entrypoint] RTPENGINE_SOCK=$RTPENGINE_SOCK is not udp:<ip>:<port>; using the default"
+    unset RTPENGINE_SOCK
+}
+case "${RTPENGINE_SOCK:-}" in
+    "") unset RTPENGINE_SOCK ;;
+    *[!0-9.:udp]*) ignore_rtpengine_sock ;;
+    *) printf '%s\n' "$RTPENGINE_SOCK" | grep -Eqx 'udp:[0-9.]+:[0-9]+' || ignore_rtpengine_sock ;;
+esac
 BRANCHES="$(echo $ENABLED | tr ' ' ',')"
+echo "[entrypoint] rtpengine ${RTPENGINE_SOCK:-udp:172.28.0.1:22222}"
 echo "[entrypoint] Starting Kamailio on ${MY_PUBLIC_IP}:${SIP_PORT} branches: ${BRANCHES:-none}"
 
 exec kamailio -DD -E -e -f /etc/kamailio/kamailio.cfg $DEFINES

@@ -24,6 +24,7 @@ services:
       CABINET_INTERNAL_URL: http://172.30.0.20:3501
       DB_URL: sqlite:///tmp/kamailio.sqlite
       SIP_PORT: "5060"
+      RTPENGINE_SOCK: ${RTPENGINE_SOCK:-}
     volumes:
       - ../kamailio/kamailio.cfg:/etc/kamailio/kamailio.cfg:ro
       - ../docker/entrypoint.sh:/test-entrypoint.sh:ro
@@ -32,6 +33,14 @@ services:
     networks:
       sip:
         ipv4_address: 172.30.0.10
+  rtpengine:
+    image: oven/bun:1-alpine
+    command: ["bun", "/test/rtpengine.ts"]
+    volumes:
+      - ./:/test:ro
+    networks:
+      sip:
+        ipv4_address: 172.30.0.50
   carrier:
     image: wr-sipp:3.7
     command: ["-sf", "/test/${CARRIER_SCENARIO:-uas.xml}", "-i", "172.30.0.30", "-p", "5060", "-m", "1", "-timeout", "20s", "-timeout_error", "-trace_err", "-error_file", "/dev/stdout"]
