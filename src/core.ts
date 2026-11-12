@@ -176,8 +176,8 @@ export type RegisterResult = {
 
 function portFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
-  const configured = Number(raw);
-  if (Number.isInteger(configured) && configured >= 1024 && configured <= 65535) return configured;
+  const configured = raw && /^[0-9]{4,5}$/.test(raw) ? Number(raw) : NaN;
+  if (configured >= 1024 && configured <= 65535) return configured;
   if (raw) console.error(`[hidden-numbers] ${name}=${raw} is not a port between 1024 and 65535; using ${fallback}`);
   return fallback;
 }

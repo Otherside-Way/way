@@ -56,7 +56,7 @@ function runDoctor(env: string[], fake: { project: string; sip: string }, eol = 
     },
   });
   const out = proc.stdout.toString().replace(/\x1b\[[0-9;]*m/g, "");
-  return { out, calls: readFileSync(log, "utf8"), hnDir, exitCode: proc.exitCode };
+  return { out, err: proc.stderr.toString(), calls: readFileSync(log, "utf8"), hnDir, exitCode: proc.exitCode };
 }
 
 const otherStacks = (out: string) => out.split("Other Hidden Numbers stacks on this server")[1]?.split("\nResult")[0] ?? "";
@@ -110,5 +110,23 @@ describe("doctor.sh", () => {
     expect(out).toContain(`Hidden Numbers for globex: ${hnDir}, cabinet :3501, SIP 5062, media 31000-31500/udp`);
     expect(calls).toContain("ps -q --filter publish=3501/tcp --filter label=com.docker.compose.project=hidden-numbers-globex");
     expect(otherStacks(out)).not.toContain("hidden-numbers-globex");
+  });
+
+  test("a lone or unbalanced quote in .env is read as it is, and only a matching pair of quotes is stripped", () => {
+    const cases: [string, string][] = [
+      ['"', '"'],
+      ["'", "'"],
+      ['"globex', '"globex'],
+      ["globex'", "globex'"],
+      [`'globex"`, `'globex"`],
+      ['""', "acme"],
+      ['"g"', "g"],
+      ["'globex'", "globex"],
+    ];
+    for (const [raw, shown] of cases) {
+      const { out, err } = runDoctor(["COMPOSE_PROJECT_NAME=hidden-numbers", `HN_SLUG=${raw}`], { project: "hidden-numbers", sip: "5060" });
+      expect(out).toContain(`Hidden Numbers for ${shown}: `);
+      expect(err).not.toMatch(/substring expression|bad substitution|doctor\.sh: line 1[4-9]/);
+    }
   });
 });

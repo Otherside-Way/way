@@ -157,7 +157,7 @@ describe("cli", () => {
     expect((await run(["connect"], async () => body)).exitCode).toBe(0);
     const errors = spyOn(console, "error").mockImplementation(() => {});
     try {
-      for (const bad of ["abc", "80", "70000", "3501.5"]) {
+      for (const bad of ["abc", "80", "70000", "3501.5", "0x400", "1e3", "3.5e3", "0x0DAD"]) {
         errors.mockClear();
         process.env.CABINET_PORT = bad;
         await run(["register"]);

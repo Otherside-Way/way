@@ -15,7 +15,10 @@ env_value() {
   local value
   value="$(sed -n "s/^$1=//p" "$HN_DIR/.env" 2>/dev/null | tail -1)"
   value="${value%$'\r'}"
-  case "$value" in \"*\" | \'*\') value="${value:1:${#value}-2}" ;; esac
+  local first="${value:0:1}"
+  if [ "${#value}" -ge 2 ] && { [ "$first" = '"' ] || [ "$first" = "'" ]; } && [ "${value: -1}" = "$first" ]; then
+    value="${value:1:${#value}-2}"
+  fi
   printf '%s' "$value"
 }
 port_or() { [[ "$1" =~ ^[0-9]{4,5}$ ]] && [ "$1" -ge 1024 ] && [ "$1" -le 65535 ] && echo "$1" || echo "$2"; }
