@@ -1,12 +1,14 @@
-name: hidden-numbers
+name: ${COMPOSE_PROJECT_NAME:-hidden-numbers}
 
 services:
   cabinet:
     image: ${HN_IMAGE_CABINET:?run install.sh}
     ports:
-      - "${CABINET_BIND:-0.0.0.0}:3500:3500"
+      - "${CABINET_BIND:-0.0.0.0}:${CABINET_PORT:-3500}:3500"
     environment:
       PORT: 3500
+      CABINET_PORT: ${CABINET_PORT:-3500}
+      RTPENGINE_NG: ${HN_GATEWAY:-172.28.0.1}:22222
       SIP_PORT: ${SIP_PORT:-5060}
       INTERNAL_HOST: 0.0.0.0
       INTERNAL_PORT: 3501
@@ -34,6 +36,7 @@ services:
     environment:
       HN_CONFIG: cabinet
       SIP_PORT: ${SIP_PORT:-5060}
+      RTPENGINE_SOCK: udp:${HN_GATEWAY:-172.28.0.1}:22222
       SHARED_DIR: /shared
       CABINET_INTERNAL_URL: http://cabinet:3501
       DB_URL: sqlite:///var/lib/kamailio/kamailio.db
@@ -54,25 +57,25 @@ services:
     command:
       - rtpengine
       - --interface=${RTPENGINE_INTERFACE:?run install.sh}
-      - --listen-ng=172.28.0.1:22222
-      - --listen-http=172.28.0.1:8080
-      - --port-min=30000
-      - --port-max=30500
+      - --listen-ng=${HN_GATEWAY:-172.28.0.1}:22222
+      - --listen-http=${HN_GATEWAY:-172.28.0.1}:8080
+      - --port-min=${RTP_MIN:-30000}
+      - --port-max=${RTP_MAX:-30500}
       - --log-level=5
     restart: unless-stopped
 
 networks:
   default:
-    name: hidden-numbers
+    name: ${HN_NETWORK:-hidden-numbers}
     ipam:
       config:
-        - subnet: 172.28.0.0/16
-          gateway: 172.28.0.1
+        - subnet: ${HN_SUBNET:-172.28.0.0/16}
+          gateway: ${HN_GATEWAY:-172.28.0.1}
 
 volumes:
   cabinet-data:
-    name: hn-cabinet-data
+    name: ${HN_VOLUME_PREFIX:-hn}-cabinet-data
   shared:
-    name: hn-shared
+    name: ${HN_VOLUME_PREFIX:-hn}-shared
   kamailio-data:
-    name: hn-kamailio-data
+    name: ${HN_VOLUME_PREFIX:-hn}-kamailio-data

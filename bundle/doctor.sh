@@ -11,6 +11,24 @@ bad() { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAIL=$((FAIL + 1)); }
 section() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
 compose() { docker compose --project-directory "$HN_DIR" -f "$HN_DIR/docker-compose.yml" --env-file "$HN_DIR/.env" "$@"; }
+env_value() {
+  local value
+  value="$(sed -n "s/^$1=//p" "$HN_DIR/.env" 2>/dev/null | tail -1)"
+  value="${value%$'\r'}"
+  case "$value" in \"*\" | \'*\') value="${value:1:${#value}-2}" ;; esac
+  printf '%s' "$value"
+}
+port_or() { [[ "$1" =~ ^[0-9]{4,5}$ ]] && [ "$1" -ge 1024 ] && [ "$1" -le 65535 ] && echo "$1" || echo "$2"; }
+
+project="$(env_value COMPOSE_PROJECT_NAME)"
+project="${project:-hidden-numbers}"
+cabinet_port="$(port_or "$(env_value CABINET_PORT)" 3500)"
+sip="$(port_or "$(env_value SIP_PORT)" 5060)"
+rtp_min="$(port_or "$(env_value RTP_MIN)" 30000)"
+rtp_max="$(port_or "$(env_value RTP_MAX)" 30500)"
+slug="$(env_value HN_SLUG)"
+[ -n "$slug" ] || slug="$(compose exec -T cabinet bun src/cli.ts status --get core.slug 2>/dev/null | tail -1)"
+printf '\033[1mHidden Numbers for %s: %s, cabinet :%s, SIP %s, media %s-%s/udp\033[0m\n' "${slug:-an unknown client}" "$HN_DIR" "$cabinet_port" "$sip" "$rtp_min" "$rtp_max"
 
 section "Containers"
 for svc in cabinet kamailio rtpengine; do
@@ -28,12 +46,10 @@ done
 loops="$(compose ps -q 2>/dev/null | xargs -r docker inspect -f '{{.Name}} {{.RestartCount}}' 2>/dev/null | awk '$2 > 3 {print $1}')"
 [ -n "$loops" ] && warn "restart loops: $loops" || ok "no restart loops"
 
-sip="$(sed -n "s/^SIP_PORT=//p" "$HN_DIR/.env" 2>/dev/null | tail -1)"
-[[ "$sip" =~ ^[0-9]{4,5}$ ]] && [ "$sip" -ge 1024 ] && [ "$sip" -le 65535 ] || sip=5060
 section "Ports"
-published() { [ -n "$(docker ps -q --filter "publish=$1" --filter "label=com.docker.compose.project=hidden-numbers")" ]; }
+published() { [ -n "$(docker ps -q --filter "publish=$1" --filter "label=com.docker.compose.project=$project")" ]; }
 listening() { command -v ss >/dev/null 2>&1 && ss -Hln"$1" 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$2\$"; }
-{ published 3500/tcp || listening t 3500; } && ok "cabinet is published on 3500/tcp" || bad "nothing serves 3500/tcp"
+{ published "$cabinet_port/tcp" || listening t "$cabinet_port"; } && ok "cabinet is published on $cabinet_port/tcp" || bad "nothing serves $cabinet_port/tcp"
 { published "$sip/udp" || listening u "$sip"; } && ok "SIP is published on $sip/udp" || bad "nothing serves $sip/udp"
 { published "$sip/tcp" || listening t "$sip"; } && ok "SIP is published on $sip/tcp" || warn "nothing serves $sip/tcp"
 
@@ -53,15 +69,15 @@ set +a
 if [ -n "${CABINET_DOMAIN:-}" ]; then
   web_rules="80/tcp 443/tcp"
 else
-  web_rules="3500/tcp"
+  web_rules="$cabinet_port/tcp"
 fi
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
   rules="$(ufw status 2>/dev/null)"
-  for rule in $web_rules "$sip/udp" "$sip/tcp" "30000:30500/udp"; do
+  for rule in $web_rules "$sip/udp" "$sip/tcp" "$rtp_min:$rtp_max/udp"; do
     echo "$rules" | grep -q "^$rule" && ok "ufw allows $rule" || warn "ufw is active and does not allow $rule"
   done
 else
-  ok "no active ufw firewall on this host; make sure the provider firewall opens ${web_rules// /, }, $sip/udp+tcp and 30000-30500/udp"
+  ok "no active ufw firewall on this host; make sure the provider firewall opens ${web_rules// /, }, $sip/udp+tcp and $rtp_min-$rtp_max/udp"
 fi
 
 if [ -n "${CABINET_DOMAIN:-}" ]; then
@@ -85,6 +101,20 @@ while IFS=$'\t' read -r level text; do
   esac
 done <<<"$report"
 [ "$rc" -gt 1 ] && bad "the cabinet doctor could not run"
+
+section "Other Hidden Numbers stacks on this server"
+others=0
+while IFS=$'\t' read -r other_project other_dir other_state other_ports; do
+  [ -n "$other_project" ] && [ "$other_project" != "$project" ] || continue
+  other_port="$(printf '%s' "$other_ports" | grep -oE '[0-9]+->3500/tcp' | head -1)"
+  if [ -n "$other_port" ]; then
+    printf '  %s  %s  cabinet :%s\n' "$other_project" "$other_dir" "${other_port%%->*}"
+  else
+    printf '  %s  %s  cabinet %s\n' "$other_project" "$other_dir" "$other_state"
+  fi
+  others=$((others + 1))
+done < <(docker ps -a --filter label=com.docker.compose.service=cabinet --format '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}\t{{.State}}\t{{.Ports}}' 2>/dev/null)
+[ "$others" -gt 0 ] || printf '  none\n'
 
 section "Result"
 if [ "$FAIL" -gt 0 ]; then
