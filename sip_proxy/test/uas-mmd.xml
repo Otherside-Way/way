@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<scenario name="carrier like MMD: full record-route in 180, only its own in 200, private contact, late 200 retransmission, hangs up">
+  <recv request="INVITE" rrs="true">
+    <action>
+      <ereg regexp="Via: ([^[:cntrl:]]*)[[:cntrl:]]+Via: ([^[:cntrl:]]*)" search_in="msg" check_it="true" assign_to="vias,via1,via2" />
+      <ereg regexp="From: ([^[:cntrl:]]*)" search_in="msg" check_it="true" assign_to="f,from" />
+      <ereg regexp="To: ([^[:cntrl:]]*)" search_in="msg" check_it="true" assign_to="t,to" />
+      <ereg regexp="Call-ID: ([^[:cntrl:]]*)" search_in="msg" check_it="true" assign_to="c,callid" />
+      <ereg regexp="CSeq: ([^[:cntrl:]]*)" search_in="msg" check_it="true" assign_to="s,cseq" />
+      <log message="carrier got [$vias] [$f] [$t] [$c] [$s]" />
+    </action>
+  </recv>
+  <pause milliseconds="1200" />
+  <send>
+    <![CDATA[
+      SIP/2.0 180 Ringing
+      Via: [$via1]
+      Via: [$via2]
+      From: [$from]
+      To: [$to];tag=[pid]SIPpTag01[call_number]
+      Call-ID: [$callid]
+      CSeq: [$cseq]
+      [last_Record-Route:]
+      Contact: <sip:carrier@10.212.0.5:12835>
+      User-Agent: mmdsip
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      Via: [$via1]
+      Via: [$via2]
+      From: [$from]
+      To: [$to];tag=[pid]SIPpTag01[call_number]
+      Call-ID: [$callid]
+      CSeq: [$cseq]
+      Record-Route: <sip:[local_ip]:[local_port];lr>
+      Contact: <sip:carrier@10.212.0.5:12835>
+      User-Agent: mmdsip
+      Server: mmdsip
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <recv request="ACK">
+    <action>
+      <ereg regexp="^ACK sip:carrier@10\.212\.0\.5:12835 SIP/2\.0" search_in="msg" check_it="true" assign_to="ack_ruri" />
+      <ereg regexp="^ *SIP/2\.0/UDP 172\.30\.0\.10[:;]" search_in="hdr" header="Via:" check_it="true" assign_to="ack_via" />
+      <log message="carrier got the ACK [$ack_ruri] via [$ack_via]" />
+    </action>
+  </recv>
+  <pause milliseconds="6000" />
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      Via: [$via1]
+      Via: [$via2]
+      From: [$from]
+      To: [$to];tag=[pid]SIPpTag01[call_number]
+      Call-ID: [$callid]
+      CSeq: [$cseq]
+      Record-Route: <sip:[local_ip]:[local_port];lr>
+      Contact: <sip:carrier@10.212.0.5:12835>
+      User-Agent: mmdsip
+      Server: mmdsip
+      Subject: late retransmission
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <send>
+    <![CDATA[
+      BYE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      From: [last_To:]
+      To: [last_From:]
+      [routes]
+      Call-ID: [call_id]
+      CSeq: 1 BYE
+      Max-Forwards: 70
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <recv response="200" />
+</scenario>

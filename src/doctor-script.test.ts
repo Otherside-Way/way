@@ -124,9 +124,20 @@ describe("doctor.sh", () => {
       ["'globex'", "globex"],
     ];
     for (const [raw, shown] of cases) {
-      const { out, err } = runDoctor(["COMPOSE_PROJECT_NAME=hidden-numbers", `HN_SLUG=${raw}`], { project: "hidden-numbers", sip: "5060" });
+      const { out, err, exitCode } = runDoctor(["COMPOSE_PROJECT_NAME=hidden-numbers", `HN_SLUG=${raw}`], { project: "hidden-numbers", sip: "5060" });
       expect(out).toContain(`Hidden Numbers for ${shown}: `);
-      expect(err).not.toMatch(/substring expression|bad substitution|doctor\.sh: line 1[4-9]/);
+      expect(out).toContain("everything looks healthy");
+      expect(exitCode).toBe(0);
+      expect(err).not.toContain("doctor.sh:");
     }
+  });
+
+  test("ports with a leading zero or outside 1024-65535 fall back to the classic ones", () => {
+    const { out, calls, hnDir } = runDoctor(
+      ["COMPOSE_PROJECT_NAME=hidden-numbers", "HN_SLUG=acme", "CABINET_PORT=03501", "SIP_PORT=05062", "RTP_MIN=031000", "RTP_MAX=99999"],
+      { project: "hidden-numbers", sip: "5060" },
+    );
+    expect(out).toContain(`Hidden Numbers for acme: ${hnDir}, cabinet :3500, SIP 5060, media 30000-30500/udp`);
+    expect(calls).toContain("ps -q --filter publish=3500/tcp --filter label=com.docker.compose.project=hidden-numbers");
   });
 });

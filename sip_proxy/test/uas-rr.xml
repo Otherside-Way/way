@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<scenario name="compliant carrier with its own record-route echoes the full set, reformatted in 200, and hangs up">
+  <recv request="INVITE" rrs="true">
+    <action>
+      <ereg regexp="&lt;sip:172\.30\.0\.10;lr;ftag=([^;&gt;]*);did=([^;&gt;]*)&gt;" search_in="msg" check_it="true" assign_to="ours,ftag,did" />
+      <log message="carrier got our record-route [$ours] [$ftag] [$did]" />
+    </action>
+  </recv>
+  <send>
+    <![CDATA[
+      SIP/2.0 180 Ringing
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Record-Route: <sip:[local_ip]:[local_port];lr>
+      [last_Record-Route:]
+      Contact: <sip:carrier@[local_ip]:[local_port]>
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Record-Route: <sip:[local_ip]:[local_port];lr>
+      Record-Route:  <sip:172.30.0.10;did=[$did];ftag=[$ftag];lr> ,<sip:172.30.0.40:5060;lr>
+      Contact: <sip:carrier@[local_ip]:[local_port]>
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <recv request="ACK">
+    <action>
+      <ereg regexp="^ACK sip:carrier@172\.30\.0\.30:5060 SIP/2\.0" search_in="msg" check_it="true" assign_to="ack_ruri" />
+      <ereg regexp="^ *SIP/2\.0/UDP 172\.30\.0\.10[:;]" search_in="hdr" header="Via:" check_it="true" assign_to="ack_via" />
+      <log message="carrier got the ACK [$ack_ruri] via [$ack_via]" />
+    </action>
+  </recv>
+  <pause milliseconds="300" />
+  <send>
+    <![CDATA[
+      BYE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      From: [last_To:]
+      To: [last_From:]
+      [routes]
+      Call-ID: [call_id]
+      CSeq: 1 BYE
+      Max-Forwards: 70
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <recv response="200" />
+</scenario>

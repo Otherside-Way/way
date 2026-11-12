@@ -51,7 +51,7 @@ services:
         ipv4_address: 172.30.0.30
   platform:
     image: wr-sipp:3.7
-    command: ["172.30.0.10:5060", "-sf", "/test/uac.xml", "-i", "172.30.0.40", "-p", "5060", "-m", "1", "-timeout", "20s", "-timeout_error", "-trace_err", "-error_file", "/dev/stdout"]
+    command: ["172.30.0.10:5060", "-sf", "/test/${PLATFORM_SCENARIO:-uac.xml}", "-i", "172.30.0.40", "-p", "5060", "-m", "1", "-timeout", "30s", "-timeout_error", "-trace_err", "-error_file", "/dev/stdout", "-trace_msg", "-message_file", "/dev/stdout"]
     volumes:
       - ./:/test:ro
     depends_on: [kamailio, carrier]

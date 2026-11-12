@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<scenario name="platform behind an edge proxy gets the compliant carrier record-route set unchanged and takes the carrier BYE">
+  <send retrans="500">
+    <![CDATA[
+      INVITE sip:+945538363232901@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Record-Route: <sip:[local_ip]:[local_port];lr>
+      From: <sip:winberry_.at.cc.winberry@[local_ip]>;tag=[pid]SIPpTag00[call_number]
+      To: <sip:+945538363232901@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:platform@[local_ip]:[local_port]>
+      X-API-Key: test-trunk-key-0123456789
+      Max-Forwards: 70
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <recv response="100" optional="true" />
+  <recv response="180" optional="true" />
+  <recv response="200" rrs="true">
+    <action>
+      <ereg regexp="[[:cntrl:]]Record-Route: &lt;sip:172\.30\.0\.30:5060;lr&gt;[[:cntrl:]]+Record-Route:  (&lt;sip:172\.30\.0\.10;did=[^;&gt;]*;ftag=[^;&gt;]*;lr&gt;) ,&lt;sip:172\.30\.0\.40:5060;lr&gt;[[:cntrl:]]" search_in="msg" check_it="true" assign_to="rrset,our_rr" />
+      <ereg regexp="&lt;sip:hn-anon@172\.30\.0\.10:5060&gt;" search_in="hdr" header="Contact:" check_it="true" assign_to="contact" />
+      <log message="platform got Record-Route: [$rrset] Contact: [$contact]" />
+    </action>
+  </recv>
+  <send>
+    <![CDATA[
+      ACK [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      From: <sip:winberry_.at.cc.winberry@[local_ip]>;tag=[pid]SIPpTag00[call_number]
+      [last_To:]
+      Route: [$our_rr], <sip:172.30.0.30:5060;lr>
+      Call-ID: [call_id]
+      CSeq: 1 ACK
+      Max-Forwards: 70
+      Content-Length: 0
+
+    ]]>
+  </send>
+  <recv request="BYE" />
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+
+    ]]>
+  </send>
+</scenario>

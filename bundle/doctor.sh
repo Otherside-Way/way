@@ -21,7 +21,7 @@ env_value() {
   fi
   printf '%s' "$value"
 }
-port_or() { [[ "$1" =~ ^[0-9]{4,5}$ ]] && [ "$1" -ge 1024 ] && [ "$1" -le 65535 ] && echo "$1" || echo "$2"; }
+port_or() { [[ "$1" =~ ^[1-9][0-9]{3,4}$ ]] && [ "$1" -ge 1024 ] && [ "$1" -le 65535 ] && echo "$1" || echo "$2"; }
 
 project="$(env_value COMPOSE_PROJECT_NAME)"
 project="${project:-hidden-numbers}"
