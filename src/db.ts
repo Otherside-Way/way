@@ -1,5 +1,7 @@
 import { Database } from "bun:sqlite";
 import { config } from "./config";
+import { CLIENT_RESULTS } from "./status";
+import { phoneCountry } from "./phone-country";
 
 const db = new Database(config.dbPath);
 db.run("PRAGMA busy_timeout = 5000");
@@ -40,6 +42,7 @@ const migrate = db.transaction(() => {
     delivery_status: "TEXT",
     delivered_at: "TEXT",
     delivery_error: "TEXT",
+    phone_country: "TEXT",
   };
 
   const presentColumns = new Set((db.query("PRAGMA table_info(numbers)").all() as { name: string }[]).map((c) => c.name));
@@ -147,6 +150,7 @@ const migrate = db.transaction(() => {
     )
   `);
   db.run("CREATE INDEX IF NOT EXISTS upload_numbers_number ON upload_numbers (number_id)");
+  db.run("CREATE INDEX IF NOT EXISTS numbers_phone_country ON numbers (phone_country)");
   db.run(`
     INSERT OR IGNORE INTO upload_numbers (upload_id, number_id, segment, cohort, created_at)
     SELECT upload_id, id, segment, cohort, created_at FROM numbers WHERE upload_id IS NOT NULL
@@ -168,6 +172,36 @@ export function backfillLegacyRequests(): number {
 
 migrate.immediate();
 
+const BACKFILL_BATCH = 500;
+
+export function backfillPhoneCountries(): number {
+  const pick = db.prepare("SELECT id, real FROM numbers WHERE phone_country IS NULL AND id > ? ORDER BY id LIMIT ?");
+  const set = db.prepare("UPDATE numbers SET phone_country = ? WHERE id = ? AND phone_country IS NULL");
+  const fill = db.transaction((rows: { id: number; real: string }[]) => {
+    let changed = 0;
+    for (const r of rows) {
+      const country = phoneCountry(r.real);
+      if (country) changed += set.run(country, r.id).changes;
+    }
+    return changed;
+  });
+  let cursor = 0;
+  let total = 0;
+  for (;;) {
+    const rows = pick.all(cursor, BACKFILL_BATCH) as { id: number; real: string }[];
+    if (rows.length === 0) return total;
+    total += fill(rows);
+    cursor = rows[rows.length - 1].id;
+  }
+}
+
+db.run("CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, done_at TEXT NOT NULL DEFAULT (datetime('now')))");
+
+if (!db.query("SELECT 1 FROM migrations WHERE name = 'phone_country_backfill'").get()) {
+  backfillPhoneCountries();
+  db.run("INSERT OR IGNORE INTO migrations (name) VALUES ('phone_country_backfill')");
+}
+
 export type NumberRow = {
   id: number;
   upload_id: number | null;
@@ -179,6 +213,7 @@ export type NumberRow = {
   first_name: string | null;
   last_name: string | null;
   country: string | null;
+  phone_country: string | null;
   language: string | null;
   segment: string | null;
   cohort: string | null;
@@ -213,7 +248,7 @@ export type NewNumber = {
 export type UploadRow = { id: number; label: string; created_at: string; count: number };
 
 const COLS =
-  "id, upload_id, real, token, user_id, webhook_id, external_id, first_name, last_name, country, language, segment, cohort, created_at, pushed_at, outcome, result, call_attempts, result_at, delivery_status, delivered_at, delivery_error, " +
+  "id, upload_id, real, token, user_id, webhook_id, external_id, first_name, last_name, country, phone_country, language, segment, cohort, created_at, pushed_at, outcome, result, call_attempts, result_at, delivery_status, delivered_at, delivery_error, " +
   "(SELECT COUNT(*) FROM requests r WHERE r.number_id = numbers.id) AS requests_count, " +
   "COALESCE((SELECT MAX(COALESCE(r.result_at, r.created_at)) FROM requests r WHERE r.number_id = numbers.id), numbers.created_at) AS last_activity";
 
@@ -263,12 +298,13 @@ export function insertNumbers(uploadId: number, rows: NewNumber[]): InsertedNumb
   const find = db.prepare("SELECT id, user_id FROM numbers WHERE token = ?");
   const insert = db.prepare(
     `INSERT INTO numbers
-       (upload_id, real, token, user_id, webhook_id, external_id, first_name, last_name, country, language, segment, cohort)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (upload_id, real, token, user_id, webhook_id, external_id, first_name, last_name, country, phone_country, language, segment, cohort)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const update = db.prepare(
     `UPDATE numbers
         SET real = ?,
+            phone_country = ?,
             user_id = COALESCE(?, user_id),
             webhook_id = COALESCE(?, webhook_id)
       WHERE id = ?`,
@@ -286,7 +322,7 @@ export function insertNumbers(uploadId: number, rows: NewNumber[]): InsertedNumb
       if (existing) {
         numberId = existing.id;
         if (r.user_id && r.user_id !== existing.user_id) changed.push({ field: "user_id", from: existing.user_id, to: r.user_id });
-        update.run(r.real, r.user_id ?? null, r.webhook_id ?? null, numberId);
+        update.run(r.real, phoneCountry(r.real), r.user_id ?? null, r.webhook_id ?? null, numberId);
       } else {
         numberId = Number(
           insert.run(
@@ -299,6 +335,7 @@ export function insertNumbers(uploadId: number, rows: NewNumber[]): InsertedNumb
             r.first_name ?? null,
             r.last_name ?? null,
             r.country ?? null,
+            phoneCountry(r.real),
             r.language ?? null,
             r.segment ?? null,
             r.cohort ?? null,
@@ -354,8 +391,8 @@ export function updateNumber(id: number, patch: Partial<NewNumber>): boolean {
   const sets: string[] = [];
   const vals: unknown[] = [];
   if (patch.real !== undefined) {
-    sets.push("real = ?");
-    vals.push(patch.real);
+    sets.push("real = ?", "phone_country = ?");
+    vals.push(patch.real, phoneCountry(patch.real));
   }
   if (patch.token !== undefined) {
     sets.push("token = ?");
@@ -798,3 +835,51 @@ export function setRequestDeliveryState(callId: string, status: string, error?: 
 }
 
 export { db };
+
+export type CountryStat = {
+  country: string | null;
+  numbers: number;
+  requests: number;
+  results: number;
+  call_attempts: number;
+  by_result: Partial<Record<(typeof CLIENT_RESULTS)[number], number>>;
+};
+
+export function countryStats(): CountryStat[] {
+  const rows = db
+    .query(
+      `WITH r AS (
+         SELECT number_id,
+                COUNT(*) AS requests,
+                SUM(CASE WHEN result_at IS NOT NULL THEN 1 ELSE 0 END) AS results,
+                SUM(COALESCE(call_attempts, 0)) AS call_attempts
+           FROM requests GROUP BY number_id
+       )
+       SELECT n.phone_country AS country,
+              COUNT(*) AS numbers,
+              COALESCE(SUM(r.requests), 0) AS requests,
+              COALESCE(SUM(r.results), 0) AS results,
+              COALESCE(SUM(r.call_attempts), 0) AS call_attempts
+         FROM numbers n LEFT JOIN r ON r.number_id = n.id
+        GROUP BY n.phone_country
+        ORDER BY numbers DESC, country`,
+    )
+    .all() as Omit<CountryStat, "by_result">[];
+  const breakdown = db
+    .query(
+      `SELECT n.phone_country AS country, q.result AS result, COUNT(*) AS n
+         FROM requests q JOIN numbers n ON n.id = q.number_id
+        WHERE q.result IS NOT NULL
+        GROUP BY n.phone_country, q.result`,
+    )
+    .all() as { country: string | null; result: string; n: number }[];
+  const known = new Set<string>(CLIENT_RESULTS);
+  const byCountry = new Map<string | null, CountryStat["by_result"]>();
+  for (const b of breakdown) {
+    if (!known.has(b.result)) continue;
+    const entry = byCountry.get(b.country) ?? {};
+    entry[b.result as (typeof CLIENT_RESULTS)[number]] = b.n;
+    byCountry.set(b.country, entry);
+  }
+  return rows.map((row) => ({ ...row, by_result: byCountry.get(row.country) ?? {} }));
+}

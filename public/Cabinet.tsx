@@ -1,4 +1,4 @@
-import { PlusIcon, Cog6ToothIcon, BookOpenIcon, QueueListIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, Cog6ToothIcon, BookOpenIcon, QueueListIcon, GlobeAltIcon } from "@heroicons/react/24/outline";
 import { useCabinet } from "./lib/useCabinet";
 import { Button } from "./components/Button";
 import { SearchInput } from "./components/SearchInput";
@@ -14,6 +14,7 @@ import { RequestsDialog } from "./components/RequestsDialog";
 import { DocsDialog } from "./components/DocsDialog";
 import { SendUploadDialog } from "./components/SendUploadDialog";
 import { BatchesDialog } from "./components/BatchesDialog";
+import { CountriesDialog } from "./components/CountriesDialog";
 import { Toast } from "./components/Toast";
 import { FirstSteps } from "./components/FirstSteps";
 import type { BuildInfo } from "./lib/api";
@@ -62,6 +63,10 @@ export function Cabinet({
             <Button mode="function" onClick={c.openBatches}>
               <QueueListIcon className="h-4 w-4" />
               Batches
+            </Button>
+            <Button mode="function" onClick={c.openCountries}>
+              <GlobeAltIcon className="h-4 w-4" />
+              Countries
             </Button>
             <Button mode="function" onClick={c.openDocs}>
               <BookOpenIcon className="h-4 w-4" />
@@ -130,6 +135,7 @@ export function Cabinet({
       />
       <SendUploadDialog upload={c.sendingUpload} onClose={c.closeSendUpload} onSent={c.uploadSent} />
       <BatchesDialog open={c.batchesOpen} onClose={c.closeBatches} />
+      <CountriesDialog open={c.countriesOpen} onClose={c.closeCountries} />
       <DocsDialog open={c.docsOpen} settings={c.settings} onClose={c.closeDocs} />
       <TranscriptDialog row={c.transcriptRow} data={c.transcript} busy={c.transcriptBusy} onClose={c.closeTranscript} />
       <RequestsDialog row={c.requestsRow} requests={c.requests} busy={c.busy} onClose={c.closeRequests} onResend={c.resendRequest} />

@@ -44,12 +44,19 @@ export type PushResult = {
   error?: string;
 };
 
+function countryCode(value: string | null | undefined): string | null {
+  return value && /^[A-Z]{2}$/.test(value) ? value : null;
+}
+
+const DETECTED_COUNTRY: StoredPlatformConfig["fields"][number] = { as: "country", from: "phone_country" };
+
 const PLAYER_TARGETS = new Set(["phone_e164", "country", "language", "first_name", "last_name"]);
 
 function sourceValue(r: NumberRow, req: RequestRow, from: string, platform: StoredPlatformConfig): string | null {
   if (from === "token") return r.token;
   if (from === "user_id") return r.user_id;
   if (from === "country") return r.country && r.country.length === 2 ? r.country : null;
+  if (from === "phone_country") return countryCode(r.phone_country);
   if (from === "language") return r.language && r.language.length >= 2 && r.language.length <= 8 ? r.language : null;
   if (from === "first_name") return r.first_name ? r.first_name.slice(0, 128) : null;
   if (from === "last_name") return r.last_name ? r.last_name.slice(0, 128) : null;
@@ -67,8 +74,9 @@ export function buildEvent(r: NumberRow, req: RequestRow, platform: StoredPlatfo
   const data: Record<string, string> = {};
   const realTail = r.real.replace(/\D/g, "").slice(-8);
 
-  for (const field of platform.fields) {
+  for (const field of [...platform.fields, DETECTED_COUNTRY]) {
     if ((field.as as string) === "external_id") continue;
+    if (field === DETECTED_COUNTRY && player.country) continue;
     const value = sourceValue(r, req, field.from, platform);
     if (value == null || value === "") continue;
     if ((TOKEN_ONLY_TARGETS as readonly string[]).includes(field.as)) {

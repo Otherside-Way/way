@@ -31,6 +31,7 @@ import {
   getBatch,
   listBatches,
   retryAbandonedInBatch,
+  countryStats,
   type NewNumber,
 } from "./db";
 import { toCoreCsv } from "./csv";
@@ -406,6 +407,7 @@ const api = new Elysia({ prefix: "/api" })
     if (requeued > 0) kickPushWorker();
     return { requeued, batch: getBatch(PUSH_MAX_ATTEMPTS, batch.id) };
   })
+  .get("/stats/countries", () => ({ countries: countryStats() }))
   .delete("/uploads/:id", ({ params, set }) => {
     if (!deleteUpload(Number(params.id))) {
       set.status = 404;

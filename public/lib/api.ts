@@ -147,6 +147,15 @@ export type Batch = {
   delivered: number;
 };
 
+export type CountryStat = {
+  country: string | null;
+  numbers: number;
+  requests: number;
+  results: number;
+  call_attempts: number;
+  by_result: Record<string, number>;
+};
+
 export type BatchError = { call_id: string; push_error: string | null; push_attempts: number };
 
 export type QueueHealth = {
@@ -336,6 +345,12 @@ export const api = {
     }).then(async (r) => ({ ...(await r.json()), conflict: r.status === 409 })),
   batches: (offset = 0, limit = 20): Promise<{ batches: Batch[]; total: number }> => fetch(`/api/batches?offset=${offset}&limit=${limit}`).then(json),
   batch: (id: number): Promise<{ batch?: Batch; errors?: BatchError[]; error?: string }> => fetch(`/api/batches/${id}`).then(json),
+  countryStats: (): Promise<{ countries: CountryStat[] }> =>
+    fetch("/api/stats/countries").then(async (r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const body = (await r.json()) as { countries?: CountryStat[] };
+      return { countries: Array.isArray(body.countries) ? body.countries : [] };
+    }),
   retryBatch: (id: number): Promise<{ requeued?: number; error?: string }> =>
     fetch(`/api/batches/${id}/retry`, { method: "POST" }).then(json),
   health: (): Promise<{ queue: QueueHealth }> => fetch("/health").then(json),

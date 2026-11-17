@@ -47,6 +47,7 @@ export function useCabinet() {
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [sendingUpload, setSendingUpload] = useState<Upload | null>(null);
   const [batchesOpen, setBatchesOpen] = useState(false);
+  const [countriesOpen, setCountriesOpen] = useState(false);
 
   const [settings, setSettings] = useState<Settings | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -382,7 +383,8 @@ export function useCabinet() {
     settings, settingsOpen, openSettings, docsOpen, openDocs, closeDocs: () => setDocsOpen(false), closeSettings: () => setSettingsOpen(false),
     saveCrm, savePlatform, savePushRate, rotateKey, routeActions, changeEncryption, changeLogin, changeDecryptKey,
     sendingUpload, openSendUpload: setSendingUpload, closeSendUpload: () => setSendingUpload(null), uploadSent,
-    batchesOpen, openBatches: () => setBatchesOpen(true), closeBatches: () => setBatchesOpen(false), testCrm: api.testCrm, resend, pushAgain,
+    batchesOpen, openBatches: () => setBatchesOpen(true), closeBatches: () => setBatchesOpen(false),
+    countriesOpen, openCountries: () => setCountriesOpen(true), closeCountries: () => setCountriesOpen(false), testCrm: api.testCrm, resend, pushAgain,
     transcriptRow, transcript, transcriptBusy, openTranscript, closeTranscript: () => setTranscriptRow(null),
     requestsRow, requests, openRequests, closeRequests: () => setRequestsRow(null), resendRequest,
   };

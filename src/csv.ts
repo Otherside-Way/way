@@ -1,6 +1,6 @@
 import type { NumberRow } from "./db";
 
-const HEADER = ["user_id", "phone_e164", "first_name", "last_name", "country", "language", "segment", "cohort"];
+const HEADER = ["user_id", "phone_e164", "first_name", "last_name", "country", "language", "segment", "cohort", "phone_country"];
 
 function esc(v: string | null): string {
   const s = v ?? "";
@@ -11,7 +11,7 @@ export function toCoreCsv(rows: NumberRow[]): string {
   const lines = [HEADER.join(",")];
   for (const r of rows) {
     lines.push(
-      [esc(r.user_id), esc(r.token), esc(r.first_name), esc(r.last_name), esc(r.country), esc(r.language), esc(r.segment), esc(r.cohort)].join(","),
+      [esc(r.user_id), esc(r.token), esc(r.first_name), esc(r.last_name), esc(r.country), esc(r.language), esc(r.segment), esc(r.cohort), esc(r.phone_country)].join(","),
     );
   }
   return lines.join("\n") + "\n";

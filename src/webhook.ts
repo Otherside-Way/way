@@ -26,7 +26,7 @@ export const PLATFORM_TARGET_FIELDS = [
   "cohort",
 ] as const;
 
-export const PLATFORM_SOURCE_FIELDS = ["token", "user_id", "country", "language", "first_name", "last_name", "segment", "cohort"] as const;
+export const PLATFORM_SOURCE_FIELDS = ["token", "user_id", "country", "phone_country", "language", "first_name", "last_name", "segment", "cohort"] as const;
 
 export const TOKEN_ONLY_TARGETS = ["phone_e164"] as const;
 
@@ -35,6 +35,7 @@ export type PlatformSource = (typeof PLATFORM_SOURCE_FIELDS)[number];
 
 export const DEFAULT_PLATFORM_FIELDS: { as: PlatformTarget; from: PlatformSource }[] = [
   { as: "phone_e164", from: "token" },
+  { as: "country", from: "phone_country" },
   { as: "player_segment", from: "segment" },
   { as: "cohort", from: "cohort" },
 ];
