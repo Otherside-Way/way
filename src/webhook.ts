@@ -24,6 +24,7 @@ export const PLATFORM_TARGET_FIELDS = [
   "last_name",
   "player_segment",
   "cohort",
+  "user_id",
 ] as const;
 
 export const PLATFORM_SOURCE_FIELDS = ["token", "user_id", "country", "phone_country", "language", "first_name", "last_name", "segment", "cohort"] as const;

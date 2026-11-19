@@ -285,11 +285,12 @@ describe("event identity", () => {
   });
 
   test("segment and cohort come from the request first, then the number, then the defaults", () => {
-    expect(buildEvent(number, request({ segment: "nl", cohort: "welcome" }), platform).data).toEqual({ player_segment: "nl", cohort: "welcome" });
-    expect(buildEvent(number, request({}), platform).data).toEqual({ player_segment: "hidden" });
+    expect(buildEvent(number, request({ segment: "nl", cohort: "welcome" }), platform).data).toEqual({ player_segment: "nl", cohort: "welcome", user_id: "u1" });
+    expect(buildEvent(number, request({}), platform).data).toEqual({ player_segment: "hidden", user_id: "u1" });
     expect(buildEvent({ ...(number as object), segment: null } as never, request({}), { ...platform, cohort: "base" }).data).toEqual({
       player_segment: "seg",
       cohort: "base",
+      user_id: "u1",
     });
   });
 });

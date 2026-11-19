@@ -168,7 +168,8 @@ export function SettingsDialog({
           <h3 className="text-sm font-semibold text-neutral-900">What the platform receives</h3>
           <p className="text-xs text-neutral-500">
             Fixed shape. Only the token travels; the real number never does. <code>external_id</code> is the call_id of the request,{" "}
-            <code>player_segment</code> and <code>cohort</code> come from the request and fall back to the values above.
+            <code>player_segment</code> and <code>cohort</code> come from the request and fall back to the values above,{" "}
+            <code>user_id</code> is the one you sent with the player.
           </p>
           <pre className="overflow-x-auto rounded-lg bg-neutral-900 p-3 text-xs text-neutral-100">
             {JSON.stringify(
@@ -176,7 +177,7 @@ export function SettingsDialog({
                 type: platform.eventType,
                 event_id: "hn-7c1e2f40-9a3b-4d6e-8f21-0b5c4d3e2a19",
                 player: { external_id: "7c1e2f40-9a3b-4d6e-8f21-0b5c4d3e2a19", phone_e164: "+913694993501880" },
-                data: { player_segment: "hidden", cohort: "c1" },
+                data: { player_segment: "hidden", cohort: "c1", user_id: "12345" },
               },
               null,
               2,
